@@ -15,9 +15,11 @@ find_package(rclcpp REQUIRED)
 
 # 실행할 executable들 추가
 add_executable(fixed_void src/fixed_void.cpp)
+add_executable(center_cylinder src/center_cylinder.cpp)
 ament_target_dependencies(fixed_void moveit_task_constructor_core rclcpp)
+ament_target_dependencies(center_cylinder moveit_task_constructor_core rclcpp)
 
-install(TARGETS fixed_void
+install(TARGETS fixed_void center_cylinder
 DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
