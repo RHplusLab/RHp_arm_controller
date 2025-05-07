@@ -54,12 +54,12 @@ void MTCTaskNode::setupPlanningScene()
   object.header.frame_id = "world";
   object.primitives.resize(1);
   object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
-  object.primitives[0].dimensions = { 0.05, 0.003 };
+  object.primitives[0].dimensions = { 0.05, 0.01 };
 
   geometry_msgs::msg::Pose pose;
   pose.position.x = 0.20;
   pose.position.y = 0.0;
-  pose.position.z = 0.025 + 0.150;
+  pose.position.z = 0.025 + 0.001; // 땅바닥에 붙음
   pose.orientation.w = 1.0;
   object.pose = pose;
 
@@ -186,7 +186,7 @@ mtc::Task MTCTaskNode::createTask()
       // This is the transform from the object frame to the end-effector frame
       Eigen::Isometry3d grasp_frame_transform;
       Eigen::Quaterniond q = Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX()) *
-                             Eigen::AngleAxisd(0, Eigen::Vector3d::UnitY()) *
+                             Eigen::AngleAxisd(-M_PI/4, Eigen::Vector3d::UnitY()) *
                              Eigen::AngleAxisd(0, Eigen::Vector3d::UnitZ());
       grasp_frame_transform.linear() = q.matrix();
       grasp_frame_transform.translation().x() = 0.05;
@@ -218,7 +218,11 @@ mtc::Task MTCTaskNode::createTask()
     {
       auto stage = std::make_unique<mtc::stages::MoveTo>("close hand", interpolation_planner);
       stage->setGroup(hand_group_name);
-      stage->setGoal("close");
+      // 목표 joint 값 정의
+      std::map<std::string, double> goal_joints = {
+        {"slider_1", 0.01}
+      };
+      stage->setGoal(goal_joints);
       grasp->insert(std::move(stage));
     }
 
@@ -276,9 +280,10 @@ mtc::Task MTCTaskNode::createTask()
       stage->setObject("object");
 
       geometry_msgs::msg::PoseStamped target_pose_msg;
-      target_pose_msg.header.frame_id = "object";
-      target_pose_msg.pose.position.x = -0.08;
-      target_pose_msg.pose.position.z = 0.02;
+      target_pose_msg.header.frame_id = "world";
+      target_pose_msg.pose.position.x = 0.0;
+      target_pose_msg.pose.position.y = -0.145;
+      target_pose_msg.pose.position.z = 0.025 + 0.001;
       target_pose_msg.pose.orientation.w = 1.0;
       stage->setPose(target_pose_msg);
       stage->setMonitoredStage(attach_object_stage);  // Hook into attach_object_stage
