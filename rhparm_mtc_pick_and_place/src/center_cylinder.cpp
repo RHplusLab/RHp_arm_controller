@@ -54,12 +54,12 @@ void MTCTaskNode::setupPlanningScene()
   object.header.frame_id = "world";
   object.primitives.resize(1);
   object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
-  object.primitives[0].dimensions = { 0.05, 0.01 };
+  object.primitives[0].dimensions = { 0.04, 0.01 };
 
   geometry_msgs::msg::Pose pose;
   pose.position.x = 0.20;
   pose.position.y = 0.0;
-  pose.position.z = 0.025 + 0.001; // 땅바닥에 붙음
+  pose.position.z = 0.02 + 0.001; // 땅바닥에 붙음
   pose.orientation.w = 1.0;
   object.pose = pose;
 
@@ -81,7 +81,7 @@ void MTCTaskNode::doTask()
     return;
   }
 
-  if (!task_.plan(5 /* max_solutions */))
+  if (!task_.plan(10 /* max_solutions */))
   {
     RCLCPP_ERROR_STREAM(LOGGER, "Task planning failed");
     return;
@@ -324,29 +324,15 @@ mtc::Task MTCTaskNode::createTask()
       place->insert(std::move(stage));
     }
 
-    {
-      auto stage = std::make_unique<mtc::stages::MoveRelative>("retreat", cartesian_planner);
-      stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.005, 0.3);
-      stage->setIKFrame(hand_frame);
-      stage->properties().set("marker_ns", "retreat");
-
-      // Set retreat direction
-      geometry_msgs::msg::Vector3Stamped vec;
-      vec.header.frame_id = "world";
-      vec.vector.z = -0.01;
-      stage->setDirection(vec);
-      place->insert(std::move(stage));
-    }
     task.add(std::move(place));
   }
 
-  // {
-  //   auto stage = std::make_unique<mtc::stages::MoveTo>("return home", interpolation_planner);
-  //   stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-  //   stage->setGoal("rest");
-  //   task.add(std::move(stage));
-  // }
+  {
+    auto stage = std::make_unique<mtc::stages::MoveTo>("return home", sampling_planner);
+    stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
+    stage->setGoal("rest");
+    task.add(std::move(stage));
+  }
   return task;
 }
 
