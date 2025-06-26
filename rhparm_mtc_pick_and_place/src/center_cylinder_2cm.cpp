@@ -57,8 +57,8 @@ void MTCTaskNode::setupPlanningScene()
   object.primitives[0].dimensions = { 0.04, 0.01 };
 
   geometry_msgs::msg::Pose pose;
-  pose.position.x = 0.129903;
-  pose.position.y = 0.075;
+  pose.position.x = 0.160;
+  pose.position.y = 0.0;
   pose.position.z = 0.02 + 0.001; // 땅바닥에 붙음
   pose.orientation.w = 1.0;
   object.pose = pose;
@@ -220,7 +220,7 @@ mtc::Task MTCTaskNode::createTask()
       stage->setGroup(hand_group_name);
       // 목표 joint 값 정의
       std::map<std::string, double> goal_joints = {
-        {"slider_1", 0.01}
+        {"slider_1", 0.009}
       };
       stage->setGoal(goal_joints);
       grasp->insert(std::move(stage));
