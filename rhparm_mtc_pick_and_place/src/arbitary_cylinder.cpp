@@ -35,6 +35,10 @@ private:
   mtc::Task createTask();
   mtc::Task task_;
   rclcpp::Node::SharedPtr node_;
+  double x_coord_; // 멤버 변수 이름 변경 (충돌 방지)
+  double y_coord_; // 멤버 변수 이름 변경 (충돌 방지)
+  double place_coord;
+  int gripper_angle;
 };
 
 rclcpp::node_interfaces::NodeBaseInterface::SharedPtr MTCTaskNode::getNodeBaseInterface()
@@ -45,6 +49,12 @@ rclcpp::node_interfaces::NodeBaseInterface::SharedPtr MTCTaskNode::getNodeBaseIn
 MTCTaskNode::MTCTaskNode(const rclcpp::NodeOptions& options)
   : node_{ std::make_shared<rclcpp::Node>("mtc_node", options) }
 {
+  // 런치 인자에서 값을 받아오도록 파라미터 가져오기
+  x_coord_ = node_->get_parameter("x_coord").get_parameter_value().get<double>();
+  y_coord_ = node_->get_parameter("y_coord").get_parameter_value().get<double>();
+
+  RCLCPP_INFO(LOGGER, "Received x_coord: %f", x_coord_);
+  RCLCPP_INFO(LOGGER, "Received y_coord: %f", y_coord_);
 }
 
 void MTCTaskNode::setupPlanningScene()
@@ -57,8 +67,8 @@ void MTCTaskNode::setupPlanningScene()
   object.primitives[0].dimensions = { 0.04, 0.02 };
 
   geometry_msgs::msg::Pose pose;
-  pose.position.x = 0.160;
-  pose.position.y = 0.0;
+  pose.position.x = x_coord_; // 런치 인자로부터 받은 값 사용
+  pose.position.y = y_coord_; // 런치 인자로부터 받은 값 사용
   pose.position.z = 0.02 + 0.001; // 땅바닥에 붙음
   pose.orientation.w = 1.0;
   object.pose = pose;
@@ -171,7 +181,7 @@ mtc::Task MTCTaskNode::createTask()
     }
 
     /****************************************************
-  ---- *               Generate Grasp Pose                *
+  ---- * Generate Grasp Pose                *
      ***************************************************/
     {
       // Sample grasp pose
@@ -270,7 +280,7 @@ mtc::Task MTCTaskNode::createTask()
 
 
     /****************************************************
-  ---- *               Generate Place Pose                *
+  ---- * Generate Place Pose                *
      ***************************************************/
     {
       // Sample place pose
@@ -341,6 +351,7 @@ int main(int argc, char** argv)
   rclcpp::init(argc, argv);
 
   rclcpp::NodeOptions options;
+  // 이 옵션은 명령줄에서 전달된 파라미터를 자동으로 노드에 선언하도록 합니다.
   options.automatically_declare_parameters_from_overrides(true);
 
   auto mtc_task_node = std::make_shared<MTCTaskNode>(options);
