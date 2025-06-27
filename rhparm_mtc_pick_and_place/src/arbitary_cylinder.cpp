@@ -62,14 +62,14 @@ MTCTaskNode::MTCTaskNode(const rclcpp::NodeOptions& options)
 void MTCTaskNode::calculation()
 {
   double distance = std::sqrt(x_coord_ * x_coord_ + y_coord_ * y_coord_);
-  
-    if (0.11 <= distance < 0.16) {
+
+    if (0.11 <= distance && distance < 0.16) {
         gripper_angle = 70;
         place_coord = 0.11;
-    } else if (0.16 <= distance < 0.19) {
+    } else if (0.16 <= distance && distance < 0.19) {
         gripper_angle = 60;
         place_coord = 0.13;
-    } else if (0.19 <= distance < 0.20) {
+    } else if (0.19 <= distance && distance < 0.20) {
         gripper_angle = 50;
         place_coord = 0.135;
     }
@@ -156,7 +156,7 @@ mtc::Task MTCTaskNode::createTask()
 
   cartesian_planner->setMaxVelocityScalingFactor(1.0);
   cartesian_planner->setMaxAccelerationScalingFactor(1.0);
-  cartesian_planner->setStepSize(.01);
+  cartesian_planner->setStepSize(0.00005);
 
 
   auto stage_open_hand =
@@ -192,7 +192,7 @@ mtc::Task MTCTaskNode::createTask()
       stage->properties().set("marker_ns", "approach_object");
       stage->properties().set("link", hand_frame);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.0, 0.2);
+      stage->setMinMaxDistance(0.001, 0.2);
 
       // Set hand forward direction
       geometry_msgs::msg::Vector3Stamped vec;
@@ -314,7 +314,7 @@ mtc::Task MTCTaskNode::createTask()
       geometry_msgs::msg::PoseStamped target_pose_msg;
       target_pose_msg.header.frame_id = "world";
       target_pose_msg.pose.position.x = 0.0;
-      target_pose_msg.pose.position.y = -place_coord;   
+      target_pose_msg.pose.position.y = -place_coord;
       target_pose_msg.pose.position.z = 0.020 + 0.001;
       target_pose_msg.pose.orientation.w = 1.0;
       stage->setPose(target_pose_msg);
@@ -385,6 +385,7 @@ int main(int argc, char** argv)
     executor.remove_node(mtc_task_node->getNodeBaseInterface());
   });
 
+  mtc_task_node->calculation();
   mtc_task_node->setupPlanningScene();
   mtc_task_node->doTask();
 
