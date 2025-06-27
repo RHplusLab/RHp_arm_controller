@@ -30,6 +30,8 @@ public:
 
   void setupPlanningScene();
 
+  void calculation();
+
 private:
   // Compose an MTC task from a series of stages.
   mtc::Task createTask();
@@ -55,6 +57,26 @@ MTCTaskNode::MTCTaskNode(const rclcpp::NodeOptions& options)
 
   RCLCPP_INFO(LOGGER, "Received x_coord: %f", x_coord_);
   RCLCPP_INFO(LOGGER, "Received y_coord: %f", y_coord_);
+}
+
+void MTCTaskNode::calculation()
+{
+  double distance = std::sqrt(x_coord_ * x_coord_ + y_coord_ * y_coord_);
+  
+    if (0.11 <= distance < 0.16) {
+        gripper_angle = 70;
+        place_coord = 0.11;
+    } else if (0.16 <= distance < 0.19) {
+        gripper_angle = 60;
+        place_coord = 0.13;
+    } else if (0.19 <= distance < 0.20) {
+        gripper_angle = 50;
+        place_coord = 0.135;
+    }
+    else {
+        rclcpp::shutdown();  // 노드 종료
+        return;
+    }
 }
 
 void MTCTaskNode::setupPlanningScene()
@@ -196,7 +218,7 @@ mtc::Task MTCTaskNode::createTask()
       // This is the transform from the object frame to the end-effector frame
       Eigen::Isometry3d grasp_frame_transform;
       Eigen::Quaterniond q = Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX()) *
-                             Eigen::AngleAxisd(-60* M_PI / 180.0, Eigen::Vector3d::UnitY()) *
+                             Eigen::AngleAxisd(-gripper_angle* M_PI / 180.0, Eigen::Vector3d::UnitY()) *
                              Eigen::AngleAxisd(0, Eigen::Vector3d::UnitZ());
       grasp_frame_transform.linear() = q.matrix();
       grasp_frame_transform.translation().x() = 0.05;
@@ -292,7 +314,7 @@ mtc::Task MTCTaskNode::createTask()
       geometry_msgs::msg::PoseStamped target_pose_msg;
       target_pose_msg.header.frame_id = "world";
       target_pose_msg.pose.position.x = 0.0;
-      target_pose_msg.pose.position.y = -0.130;
+      target_pose_msg.pose.position.y = -place_coord;   
       target_pose_msg.pose.position.z = 0.020 + 0.001;
       target_pose_msg.pose.orientation.w = 1.0;
       stage->setPose(target_pose_msg);
