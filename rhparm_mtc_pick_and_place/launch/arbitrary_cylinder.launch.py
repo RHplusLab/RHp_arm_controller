@@ -23,7 +23,7 @@ def generate_launch_description():
     # MTC Demo node
     pick_place_demo = Node(
         package="rhparm_mtc_pick_and_place",
-        executable="arbitary_cylinder",
+        executable="arbitrary_cylinder",
         output="screen",
         parameters=[
             moveit_config,
