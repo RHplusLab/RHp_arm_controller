@@ -14,10 +14,10 @@ find_package(rclcpp REQUIRED)
 # find_package(<dependency> REQUIRED)
 
 # 실행할 executable들 추가
-add_executable(fixed_void src/fixed_void.cpp)
-ament_target_dependencies(fixed_void moveit_task_constructor_core rclcpp)
+add_executable(vision_cylinder_one src/vision_cylinder_one.cpp)
+ament_target_dependencies(vision_cylinder_one moveit_task_constructor_core rclcpp)
 
-install(TARGETS fixed_void
+install(TARGETS vision_cylinder_one
 DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
