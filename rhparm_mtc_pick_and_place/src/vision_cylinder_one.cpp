@@ -4,6 +4,10 @@
 #include <moveit/task_constructor/task.h>
 #include <moveit/task_constructor/solvers.h>
 #include <moveit/task_constructor/stages.h>
+#include <rhp_apriltag_msgs/msg/april_tag_detection_array.hpp> // AprilTag message header
+#include <chrono>
+#include <thread>
+#include <atomic>
 
 #if __has_include(<tf2_geometry_msgs/tf2_geometry_msgs.hpp>)
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -16,6 +20,7 @@
 #include <tf2_eigen/tf2_eigen.h>
 #endif
 
+// Use a dedicated logger
 static const rclcpp::Logger LOGGER = rclcpp::get_logger("mtc_tutorial");
 namespace mtc = moveit::task_constructor;
 
@@ -26,37 +31,74 @@ public:
 
   rclcpp::node_interfaces::NodeBaseInterface::SharedPtr getNodeBaseInterface();
 
-  void doTask();
-
   void setupPlanningScene();
-
+  void doTask();
   void calculation();
 
 private:
-  // Compose an MTC task from a series of stages.
+  void apriltagCallback(const rhp_apriltag_msgs::msg::AprilTagDetectionArray::SharedPtr msg);
   mtc::Task createTask();
-  mtc::Task task_;
+
   rclcpp::Node::SharedPtr node_;
-  double x_coord_; // 멤버 변수 이름 변경 (충돌 방지)
-  double y_coord_; // 멤버 변수 이름 변경 (충돌 방지)
+  mtc::Task task_;
+  rclcpp::Subscription<rhp_apriltag_msgs::msg::AprilTagDetectionArray>::SharedPtr a_tag_sub_;
+
+  double x_coord_ = 0.0;
+  double y_coord_ = 0.0;
   double place_coord;
   int gripper_angle;
+  std::atomic<bool> task_triggered_{false}; // Flag to ensure the task runs only once
 };
+
+MTCTaskNode::MTCTaskNode(const rclcpp::NodeOptions& options)
+  : node_{ std::make_shared<rclcpp::Node>("mtc_node", options) }
+{
+  RCLCPP_INFO(LOGGER, "Waiting for AprilTag detections...");
+  auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort();
+  a_tag_sub_ = node_->create_subscription<rhp_apriltag_msgs::msg::AprilTagDetectionArray>(
+      "/apriltag_detections", qos,
+      std::bind(&MTCTaskNode::apriltagCallback, this, std::placeholders::_1));
+}
 
 rclcpp::node_interfaces::NodeBaseInterface::SharedPtr MTCTaskNode::getNodeBaseInterface()
 {
   return node_->get_node_base_interface();
 }
 
-MTCTaskNode::MTCTaskNode(const rclcpp::NodeOptions& options)
-  : node_{ std::make_shared<rclcpp::Node>("mtc_node", options) }
+void MTCTaskNode::apriltagCallback(const rhp_apriltag_msgs::msg::AprilTagDetectionArray::SharedPtr msg)
 {
-  // 런치 인자에서 값을 받아오도록 파라미터 가져오기
-  x_coord_ = node_->get_parameter("x_coord").get_parameter_value().get<double>();
-  y_coord_ = node_->get_parameter("y_coord").get_parameter_value().get<double>();
+    // If the task has already been triggered, do nothing.
+    if (task_triggered_.load()) {
+        return;
+    }
 
-  RCLCPP_INFO(LOGGER, "Received x_coord: %f", x_coord_);
-  RCLCPP_INFO(LOGGER, "Received y_coord: %f", y_coord_);
+    const auto& detections = msg->detections;
+    for (const auto& detection : detections)
+    {
+        if (detection.id == 0)
+        {
+            // Set the flag to true to prevent this block from running again.
+            task_triggered_ = true;
+
+            // Store the coordinates from the detected tag
+            x_coord_ = detection.pose.pose.pose.position.x;
+            y_coord_ = detection.pose.pose.pose.position.y;
+
+            RCLCPP_INFO(LOGGER, "Captured Tag 0 at [x: %f, y: %f]. Starting Pick and Place.", x_coord_, y_coord_);
+
+            // Unsubscribe to stop receiving messages
+            a_tag_sub_.reset();
+
+            // Run the MTC task sequence
+            calculation();
+            setupPlanningScene();
+            doTask();
+
+            RCLCPP_INFO(LOGGER, "Task finished. Shutting down.");
+            rclcpp::shutdown(); // Shutdown the node after the task is complete
+            return;
+        }
+    }
 }
 
 void MTCTaskNode::calculation()
@@ -89,9 +131,9 @@ void MTCTaskNode::setupPlanningScene()
   object.primitives[0].dimensions = { 0.04, 0.02 };
 
   geometry_msgs::msg::Pose pose;
-  pose.position.x = x_coord_; // 런치 인자로부터 받은 값 사용
-  pose.position.y = y_coord_; // 런치 인자로부터 받은 값 사용
-  pose.position.z = 0.02 + 0.001; // 땅바닥에 붙음
+  pose.position.x = x_coord_; // Use captured x-coordinate
+  pose.position.y = y_coord_; // Use captured y-coordinate
+  pose.position.z = 0.02 + 0.001;
   pose.orientation.w = 1.0;
   object.pose = pose;
 
@@ -176,8 +218,6 @@ mtc::Task MTCTaskNode::createTask()
   mtc::Stage* attach_object_stage =
       nullptr;  // Forward attach_object_stage to place pose generator
 
-  // This is an example of SerialContainer usage. It's not strictly needed here.
-  // In fact, `task` itself is a SerialContainer by default.
   {
     auto grasp = std::make_unique<mtc::SerialContainer>("pick object");
     task.properties().exposeTo(grasp->properties(), { "eef", "group", "ik_frame" });
@@ -186,7 +226,6 @@ mtc::Task MTCTaskNode::createTask()
 
 
     {
-
       auto stage =
           std::make_unique<mtc::stages::MoveRelative>("approach object", cartesian_planner);
       stage->properties().set("marker_ns", "approach_object");
@@ -194,7 +233,6 @@ mtc::Task MTCTaskNode::createTask()
       stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
       stage->setMinMaxDistance(0.001, 0.2);
 
-      // Set hand forward direction
       geometry_msgs::msg::Vector3Stamped vec;
       vec.header.frame_id = hand_frame;
       vec.vector.x = 1.0;
@@ -202,28 +240,21 @@ mtc::Task MTCTaskNode::createTask()
       grasp->insert(std::move(stage));
     }
 
-    /****************************************************
-  ---- * Generate Grasp Pose                *
-     ***************************************************/
     {
-      // Sample grasp pose
       auto stage = std::make_unique<mtc::stages::GenerateGraspPose>("generate grasp pose"); // name
       stage->properties().configureInitFrom(mtc::Stage::PARENT);
       stage->properties().set("marker_ns", "grasp_pose"); // name, value
       stage->setPreGraspPose("open");
       stage->setObject("object");
       stage->setAngleDelta(M_PI / 24); // angle_step
-      stage->setMonitoredStage(current_state_ptr);  // Hook into current state
+      stage->setMonitoredStage(current_state_ptr);
 
-      // This is the transform from the object frame to the end-effector frame
       Eigen::Isometry3d grasp_frame_transform;
       Eigen::Quaterniond q = Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX()) *
                              Eigen::AngleAxisd(-gripper_angle* M_PI / 180.0, Eigen::Vector3d::UnitY()) *
                              Eigen::AngleAxisd(0, Eigen::Vector3d::UnitZ());
       grasp_frame_transform.linear() = q.matrix();
       grasp_frame_transform.translation().x() = 0.05;
-
-      // Compute IK
 
       auto wrapper =
           std::make_unique<mtc::stages::ComputeIK>("grasp pose IK", std::move(stage));
@@ -236,7 +267,6 @@ mtc::Task MTCTaskNode::createTask()
     }
 
     {
-
       auto stage =
           std::make_unique<mtc::stages::ModifyPlanningScene>("allow collision (hand,object)");
       stage->allowCollisions("object",
@@ -250,7 +280,6 @@ mtc::Task MTCTaskNode::createTask()
     {
       auto stage = std::make_unique<mtc::stages::MoveTo>("close hand", interpolation_planner);
       stage->setGroup(hand_group_name);
-      // 목표 joint 값 정의
       std::map<std::string, double> goal_joints = {
         {"slider_1", 0.019}
       };
@@ -273,7 +302,6 @@ mtc::Task MTCTaskNode::createTask()
       stage->setIKFrame(hand_frame);
       stage->properties().set("marker_ns", "lift_object");
 
-      // Set upward direction
       geometry_msgs::msg::Vector3Stamped vec;
       vec.header.frame_id = "world";
       vec.vector.z = 1.0;
@@ -300,12 +328,7 @@ mtc::Task MTCTaskNode::createTask()
     place->properties().configureInitFrom(mtc::Stage::PARENT,
                                           { "eef", "group", "ik_frame" });
 
-
-    /****************************************************
-  ---- * Generate Place Pose                *
-     ***************************************************/
     {
-      // Sample place pose
       auto stage = std::make_unique<mtc::stages::GeneratePlacePose>("generate place pose");
       stage->properties().configureInitFrom(mtc::Stage::PARENT);
       stage->properties().set("marker_ns", "place_pose");
@@ -318,9 +341,8 @@ mtc::Task MTCTaskNode::createTask()
       target_pose_msg.pose.position.z = 0.020 + 0.001;
       target_pose_msg.pose.orientation.w = 1.0;
       stage->setPose(target_pose_msg);
-      stage->setMonitoredStage(attach_object_stage);  // Hook into attach_object_stage
+      stage->setMonitoredStage(attach_object_stage);
 
-      // Compute IK
       auto wrapper =
           std::make_unique<mtc::stages::ComputeIK>("place pose IK", std::move(stage));
       wrapper->setMaxIKSolutions(2);
@@ -373,8 +395,14 @@ int main(int argc, char** argv)
   rclcpp::init(argc, argv);
 
   rclcpp::NodeOptions options;
-  // 이 옵션은 명령줄에서 전달된 파라미터를 자동으로 노드에 선언하도록 합니다.
   options.automatically_declare_parameters_from_overrides(true);
+
+  // Countdown before capturing
+  for (int i = 3; i > 0; --i) {
+      RCLCPP_INFO(LOGGER, "Capturing in %d...", i);
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+  }
+  RCLCPP_INFO(LOGGER, "Capturing pose now!");
 
   auto mtc_task_node = std::make_shared<MTCTaskNode>(options);
   rclcpp::executors::MultiThreadedExecutor executor;
@@ -391,5 +419,7 @@ int main(int argc, char** argv)
 
   spin_thread->join();
   rclcpp::shutdown();
+
+  // rclcpp::shutdown() is called from the callback, so the spin will exit.
   return 0;
 }

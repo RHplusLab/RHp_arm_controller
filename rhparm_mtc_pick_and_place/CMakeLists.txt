@@ -9,13 +9,15 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(moveit_task_constructor_core REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rhp_apriltag_msgs REQUIRED)
+
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
 # 실행할 executable들 추가
 add_executable(vision_cylinder_one src/vision_cylinder_one.cpp)
-ament_target_dependencies(vision_cylinder_one moveit_task_constructor_core rclcpp)
+ament_target_dependencies(vision_cylinder_one moveit_task_constructor_core rclcpp rhp_apriltag_msgs)
 
 install(TARGETS vision_cylinder_one
 DESTINATION lib/${PROJECT_NAME})
