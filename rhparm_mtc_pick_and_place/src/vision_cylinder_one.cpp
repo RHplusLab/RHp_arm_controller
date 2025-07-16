@@ -75,7 +75,7 @@ void MTCTaskNode::apriltagCallback(const rhp_apriltag_msgs::msg::AprilTagDetecti
     const auto& detections = msg->detections;
     for (const auto& detection : detections)
     {
-        if (detection.id == 0)
+        if (detection.id == 1)
         {
             // Set the flag to true to prevent this block from running again.
             task_triggered_ = true;
@@ -95,7 +95,6 @@ void MTCTaskNode::apriltagCallback(const rhp_apriltag_msgs::msg::AprilTagDetecti
             doTask();
 
             RCLCPP_INFO(LOGGER, "Task finished. Shutting down.");
-            rclcpp::shutdown(); // Shutdown the node after the task is complete
             return;
         }
     }
@@ -392,34 +391,39 @@ mtc::Task MTCTaskNode::createTask()
 
 int main(int argc, char** argv)
 {
+  // 1. ROS 초기화
   rclcpp::init(argc, argv);
 
+  // 2. 노드 생성
+  // NodeOptions를 여기서 직접 설정하여 파라미터 문제를 원천 차단합니다.
   rclcpp::NodeOptions options;
   options.automatically_declare_parameters_from_overrides(true);
+  auto mtc_task_node = std::make_shared<MTCTaskNode>(options);
 
-  // Countdown before capturing
+  // 3. 실행기(Executor) 생성 및 노드 추가
+  // MultiThreadedExecutor는 여러 콜백을 동시에 처리할 수 있어 안정적입니다.
+  rclcpp::executors::MultiThreadedExecutor executor;
+  executor.add_node(mtc_task_node->getNodeBaseInterface());
+
+  // 4. 카운트다운
   for (int i = 3; i > 0; --i) {
       RCLCPP_INFO(LOGGER, "Capturing in %d...", i);
+      // rclcpp::ok()를 확인하여 중간에 종료 신호가 오면 멈춥니다.
+      if (!rclcpp::ok()) {
+        return 0;
+      }
       std::this_thread::sleep_for(std::chrono::seconds(1));
   }
-  RCLCPP_INFO(LOGGER, "Capturing pose now!");
 
-  auto mtc_task_node = std::make_shared<MTCTaskNode>(options);
-  rclcpp::executors::MultiThreadedExecutor executor;
+  if (rclcpp::ok()) {
+    RCLCPP_INFO(LOGGER, "Capturing pose now! Waiting for topic...");
+  }
 
-  auto spin_thread = std::make_unique<std::thread>([&executor, &mtc_task_node]() {
-    executor.add_node(mtc_task_node->getNodeBaseInterface());
-    executor.spin();
-    executor.remove_node(mtc_task_node->getNodeBaseInterface());
-  });
+  // 5. 실행기 실행 (Spin)
+  // 콜백 함수 내부에서 rclcpp::shutdown()이 호출될 때까지 여기서 대기합니다.
+  executor.spin();
 
-  mtc_task_node->calculation();
-  mtc_task_node->setupPlanningScene();
-  mtc_task_node->doTask();
-
-  spin_thread->join();
+  // 6. ROS 종료
   rclcpp::shutdown();
-
-  // rclcpp::shutdown() is called from the callback, so the spin will exit.
   return 0;
 }
