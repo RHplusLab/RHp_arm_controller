@@ -30,11 +30,18 @@ public:
 
   void setupPlanningScene();
 
+  void calculation();
+
 private:
   // Compose an MTC task from a series of stages.
   mtc::Task createTask();
   mtc::Task task_;
   rclcpp::Node::SharedPtr node_;
+  double x_coord_; // 멤버 변수 이름 변경 (충돌 방지)
+  double y_coord_; // 멤버 변수 이름 변경 (충돌 방지)
+  double place_coord;
+  int gripper_angle;
+  const double cylinder_height = 0.03;
 };
 
 rclcpp::node_interfaces::NodeBaseInterface::SharedPtr MTCTaskNode::getNodeBaseInterface()
@@ -45,6 +52,32 @@ rclcpp::node_interfaces::NodeBaseInterface::SharedPtr MTCTaskNode::getNodeBaseIn
 MTCTaskNode::MTCTaskNode(const rclcpp::NodeOptions& options)
   : node_{ std::make_shared<rclcpp::Node>("mtc_node", options) }
 {
+  // 런치 인자에서 값을 받아오도록 파라미터 가져오기
+  x_coord_ = node_->get_parameter("x_coord").get_parameter_value().get<double>();
+  y_coord_ = node_->get_parameter("y_coord").get_parameter_value().get<double>();
+
+  RCLCPP_INFO(LOGGER, "Received x_coord: %f", x_coord_);
+  RCLCPP_INFO(LOGGER, "Received y_coord: %f", y_coord_);
+}
+
+void MTCTaskNode::calculation()
+{
+  double distance = std::sqrt(x_coord_ * x_coord_ + y_coord_ * y_coord_);
+
+    if (0.11 <= distance && distance < 0.16) {
+        gripper_angle = 70;
+        place_coord = 0.11;
+    } else if (0.16 <= distance && distance < 0.19) {
+        gripper_angle = 60;
+        place_coord = 0.13;
+    } else if (0.19 <= distance && distance < 0.20) {
+        gripper_angle = 50;
+        place_coord = 0.135;
+    }
+    else {
+        rclcpp::shutdown();  // 노드 종료
+        return;
+    }
 }
 
 void MTCTaskNode::setupPlanningScene()
@@ -54,12 +87,12 @@ void MTCTaskNode::setupPlanningScene()
   object.header.frame_id = "world";
   object.primitives.resize(1);
   object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
-  object.primitives[0].dimensions = { 0.05, 0.003 };
+  object.primitives[0].dimensions = { cylinder_height, 0.02 };
 
   geometry_msgs::msg::Pose pose;
-  pose.position.x = 0.20;
-  pose.position.y = 0.0;
-  pose.position.z = 0.025 + 0.150;
+  pose.position.x = x_coord_; // 런치 인자로부터 받은 값 사용
+  pose.position.y = y_coord_; // 런치 인자로부터 받은 값 사용
+  pose.position.z = cylinder_height/2 + 0.001; // 땅바닥에 붙음
   pose.orientation.w = 1.0;
   object.pose = pose;
 
@@ -81,7 +114,7 @@ void MTCTaskNode::doTask()
     return;
   }
 
-  if (!task_.plan(5 /* max_solutions */))
+  if (!task_.plan(10 /* max_solutions */))
   {
     RCLCPP_ERROR_STREAM(LOGGER, "Task planning failed");
     return;
@@ -124,7 +157,7 @@ mtc::Task MTCTaskNode::createTask()
 
   cartesian_planner->setMaxVelocityScalingFactor(1.0);
   cartesian_planner->setMaxAccelerationScalingFactor(1.0);
-  cartesian_planner->setStepSize(.01);
+  cartesian_planner->setStepSize(0.00005);
 
 
   auto stage_open_hand =
@@ -160,7 +193,7 @@ mtc::Task MTCTaskNode::createTask()
       stage->properties().set("marker_ns", "approach_object");
       stage->properties().set("link", hand_frame);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.02, 0.2);
+      stage->setMinMaxDistance(0.001, 0.2);
 
       // Set hand forward direction
       geometry_msgs::msg::Vector3Stamped vec;
@@ -171,7 +204,7 @@ mtc::Task MTCTaskNode::createTask()
     }
 
     /****************************************************
-  ---- *               Generate Grasp Pose                *
+  ---- * Generate Grasp Pose                *
      ***************************************************/
     {
       // Sample grasp pose
@@ -186,10 +219,10 @@ mtc::Task MTCTaskNode::createTask()
       // This is the transform from the object frame to the end-effector frame
       Eigen::Isometry3d grasp_frame_transform;
       Eigen::Quaterniond q = Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX()) *
-                             Eigen::AngleAxisd(0, Eigen::Vector3d::UnitY()) *
+                             Eigen::AngleAxisd(-gripper_angle* M_PI / 180.0, Eigen::Vector3d::UnitY()) *
                              Eigen::AngleAxisd(0, Eigen::Vector3d::UnitZ());
       grasp_frame_transform.linear() = q.matrix();
-      grasp_frame_transform.translation().x() = 0.05;
+      grasp_frame_transform.translation().x() = 0.055;
 
       // Compute IK
 
@@ -218,7 +251,11 @@ mtc::Task MTCTaskNode::createTask()
     {
       auto stage = std::make_unique<mtc::stages::MoveTo>("close hand", interpolation_planner);
       stage->setGroup(hand_group_name);
-      stage->setGoal("close");
+      // 목표 joint 값 정의
+      std::map<std::string, double> goal_joints = {
+        {"slider_1", 0.019}
+      };
+      stage->setGoal(goal_joints);
       grasp->insert(std::move(stage));
     }
 
@@ -233,7 +270,7 @@ mtc::Task MTCTaskNode::createTask()
       auto stage =
           std::make_unique<mtc::stages::MoveRelative>("lift object", cartesian_planner);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.02, 0.2);
+      stage->setMinMaxDistance(0.0, 0.2);
       stage->setIKFrame(hand_frame);
       stage->properties().set("marker_ns", "lift_object");
 
@@ -266,7 +303,7 @@ mtc::Task MTCTaskNode::createTask()
 
 
     /****************************************************
-  ---- *               Generate Place Pose                *
+  ---- * Generate Place Pose                *
      ***************************************************/
     {
       // Sample place pose
@@ -276,9 +313,10 @@ mtc::Task MTCTaskNode::createTask()
       stage->setObject("object");
 
       geometry_msgs::msg::PoseStamped target_pose_msg;
-      target_pose_msg.header.frame_id = "object";
-      target_pose_msg.pose.position.x = -0.08;
-      target_pose_msg.pose.position.z = 0.02;
+      target_pose_msg.header.frame_id = "world";
+      target_pose_msg.pose.position.x = 0.0;
+      target_pose_msg.pose.position.y = -place_coord;
+      target_pose_msg.pose.position.z = cylinder_height/2 + 0.001;
       target_pose_msg.pose.orientation.w = 1.0;
       stage->setPose(target_pose_msg);
       stage->setMonitoredStage(attach_object_stage);  // Hook into attach_object_stage
@@ -319,29 +357,15 @@ mtc::Task MTCTaskNode::createTask()
       place->insert(std::move(stage));
     }
 
-    {
-      auto stage = std::make_unique<mtc::stages::MoveRelative>("retreat", cartesian_planner);
-      stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-      stage->setMinMaxDistance(0.005, 0.3);
-      stage->setIKFrame(hand_frame);
-      stage->properties().set("marker_ns", "retreat");
-
-      // Set retreat direction
-      geometry_msgs::msg::Vector3Stamped vec;
-      vec.header.frame_id = "world";
-      vec.vector.z = -0.01;
-      stage->setDirection(vec);
-      place->insert(std::move(stage));
-    }
     task.add(std::move(place));
   }
 
-  // {
-  //   auto stage = std::make_unique<mtc::stages::MoveTo>("return home", interpolation_planner);
-  //   stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
-  //   stage->setGoal("rest");
-  //   task.add(std::move(stage));
-  // }
+  {
+    auto stage = std::make_unique<mtc::stages::MoveTo>("return home", sampling_planner);
+    stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
+    stage->setGoal("rest");
+    task.add(std::move(stage));
+  }
   return task;
 }
 
@@ -350,6 +374,7 @@ int main(int argc, char** argv)
   rclcpp::init(argc, argv);
 
   rclcpp::NodeOptions options;
+  // 이 옵션은 명령줄에서 전달된 파라미터를 자동으로 노드에 선언하도록 합니다.
   options.automatically_declare_parameters_from_overrides(true);
 
   auto mtc_task_node = std::make_shared<MTCTaskNode>(options);
@@ -361,6 +386,7 @@ int main(int argc, char** argv)
     executor.remove_node(mtc_task_node->getNodeBaseInterface());
   });
 
+  mtc_task_node->calculation();
   mtc_task_node->setupPlanningScene();
   mtc_task_node->doTask();
 

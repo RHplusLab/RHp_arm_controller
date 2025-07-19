@@ -14,14 +14,14 @@ find_package(rclcpp REQUIRED)
 # find_package(<dependency> REQUIRED)
 
 # 실행할 executable들 추가
-add_executable(fixed_void src/fixed_void.cpp)
 add_executable(arbitrary_cylinder src/arbitrary_cylinder.cpp)
 add_executable(arbitrary_cylinder_stack src/arbitrary_cylinder_stack.cpp)
-ament_target_dependencies(fixed_void moveit_task_constructor_core rclcpp)
+add_executable(arbitrary_cylinder_level src/arbitrary_cylinder_level.cpp)
 ament_target_dependencies(arbitrary_cylinder moveit_task_constructor_core rclcpp)
 ament_target_dependencies(arbitrary_cylinder_stack moveit_task_constructor_core rclcpp)
+ament_target_dependencies(arbitrary_cylinder_level moveit_task_constructor_core rclcpp)
 
-install(TARGETS fixed_void arbitrary_cylinder arbitrary_cylinder_stack
+install(TARGETS arbitrary_cylinder_level arbitrary_cylinder arbitrary_cylinder_stack
 DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
