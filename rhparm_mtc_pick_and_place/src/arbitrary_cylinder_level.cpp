@@ -23,14 +23,9 @@ class MTCTaskNode
 {
 public:
   MTCTaskNode(const rclcpp::NodeOptions& options);
-
   rclcpp::node_interfaces::NodeBaseInterface::SharedPtr getNodeBaseInterface();
-
   void doTask();
-
   void setupPlanningScene();
-
-  void calculation();
 
 private:
   // Compose an MTC task from a series of stages.
@@ -39,9 +34,10 @@ private:
   rclcpp::Node::SharedPtr node_;
   double x_coord_; // 멤버 변수 이름 변경 (충돌 방지)
   double y_coord_; // 멤버 변수 이름 변경 (충돌 방지)
-  double place_coord;
-  int gripper_angle;
+  double angle_;
   const double cylinder_height = 0.03;
+  const double place_ycoord = 0.13;
+  const int level = 1; // 1,2,3층
 };
 
 rclcpp::node_interfaces::NodeBaseInterface::SharedPtr MTCTaskNode::getNodeBaseInterface()
@@ -55,29 +51,11 @@ MTCTaskNode::MTCTaskNode(const rclcpp::NodeOptions& options)
   // 런치 인자에서 값을 받아오도록 파라미터 가져오기
   x_coord_ = node_->get_parameter("x_coord").get_parameter_value().get<double>();
   y_coord_ = node_->get_parameter("y_coord").get_parameter_value().get<double>();
+  angle_ = node_->get_parameter("angle").get_parameter_value().get<double>();
 
   RCLCPP_INFO(LOGGER, "Received x_coord: %f", x_coord_);
   RCLCPP_INFO(LOGGER, "Received y_coord: %f", y_coord_);
-}
-
-void MTCTaskNode::calculation()
-{
-  double distance = std::sqrt(x_coord_ * x_coord_ + y_coord_ * y_coord_);
-
-    if (0.11 <= distance && distance < 0.16) {
-        gripper_angle = 70;
-        place_coord = 0.11;
-    } else if (0.16 <= distance && distance < 0.19) {
-        gripper_angle = 60;
-        place_coord = 0.13;
-    } else if (0.19 <= distance && distance < 0.20) {
-        gripper_angle = 50;
-        place_coord = 0.135;
-    }
-    else {
-        rclcpp::shutdown();  // 노드 종료
-        return;
-    }
+  RCLCPP_INFO(LOGGER, "Received angle: %f", angle_);
 }
 
 void MTCTaskNode::setupPlanningScene()
@@ -92,7 +70,7 @@ void MTCTaskNode::setupPlanningScene()
   geometry_msgs::msg::Pose pose;
   pose.position.x = x_coord_; // 런치 인자로부터 받은 값 사용
   pose.position.y = y_coord_; // 런치 인자로부터 받은 값 사용
-  pose.position.z = cylinder_height/2 + 0.001; // 땅바닥에 붙음
+  pose.position.z = cylinder_height/2 + 0.00001; // 땅바닥에 붙음
   pose.orientation.w = 1.0;
   object.pose = pose;
 
@@ -219,7 +197,7 @@ mtc::Task MTCTaskNode::createTask()
       // This is the transform from the object frame to the end-effector frame
       Eigen::Isometry3d grasp_frame_transform;
       Eigen::Quaterniond q = Eigen::AngleAxisd(0, Eigen::Vector3d::UnitX()) *
-                             Eigen::AngleAxisd(-gripper_angle* M_PI / 180.0, Eigen::Vector3d::UnitY()) *
+                             Eigen::AngleAxisd(-angle_* M_PI / 180.0, Eigen::Vector3d::UnitY()) *
                              Eigen::AngleAxisd(0, Eigen::Vector3d::UnitZ());
       grasp_frame_transform.linear() = q.matrix();
       grasp_frame_transform.translation().x() = 0.055;
@@ -315,8 +293,8 @@ mtc::Task MTCTaskNode::createTask()
       geometry_msgs::msg::PoseStamped target_pose_msg;
       target_pose_msg.header.frame_id = "world";
       target_pose_msg.pose.position.x = 0.0;
-      target_pose_msg.pose.position.y = -place_coord;
-      target_pose_msg.pose.position.z = cylinder_height/2 + 0.001;
+      target_pose_msg.pose.position.y = -place_ycoord;
+      target_pose_msg.pose.position.z = cylinder_height/2 + cylinder_height*(level - 1) + 0.00001;
       target_pose_msg.pose.orientation.w = 1.0;
       stage->setPose(target_pose_msg);
       stage->setMonitoredStage(attach_object_stage);  // Hook into attach_object_stage
@@ -360,12 +338,12 @@ mtc::Task MTCTaskNode::createTask()
     task.add(std::move(place));
   }
 
-  {
+/*  {
     auto stage = std::make_unique<mtc::stages::MoveTo>("return home", sampling_planner);
     stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
     stage->setGoal("rest");
     task.add(std::move(stage));
-  }
+  } */
   return task;
 }
 
@@ -386,7 +364,6 @@ int main(int argc, char** argv)
     executor.remove_node(mtc_task_node->getNodeBaseInterface());
   });
 
-  mtc_task_node->calculation();
   mtc_task_node->setupPlanningScene();
   mtc_task_node->doTask();
 

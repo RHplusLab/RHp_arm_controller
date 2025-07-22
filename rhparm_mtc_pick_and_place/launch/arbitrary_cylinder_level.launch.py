@@ -20,6 +20,12 @@ def generate_launch_description():
         description='Y coordinate for the object placement.'
     )
 
+    angle_arg = DeclareLaunchArgument(
+        'angle',
+        default_value='60.0',    # 기본값 설정 (문자열로 전달)
+        description='Grasp Angle for the object placement.'
+    )
+
     # MTC Demo node
     pick_place_demo = Node(
         package="rhparm_mtc_pick_and_place",
@@ -29,12 +35,14 @@ def generate_launch_description():
             moveit_config,
             # 런치 인자를 파라미터로 노드에 전달
             {'x_coord': LaunchConfiguration('x_coord')},
-            {'y_coord': LaunchConfiguration('y_coord')}
+            {'y_coord': LaunchConfiguration('y_coord')},
+            {'angle': LaunchConfiguration('angle')}
         ],
     )
 
     return LaunchDescription([
         x_coord_arg,
         y_coord_arg,
+        angle_arg,
         pick_place_demo
     ])
