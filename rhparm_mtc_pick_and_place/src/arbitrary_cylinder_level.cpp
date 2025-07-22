@@ -26,6 +26,7 @@ public:
   rclcpp::node_interfaces::NodeBaseInterface::SharedPtr getNodeBaseInterface();
   void doTask();
   void setupPlanningScene();
+  void calculation();
 
 private:
   // Compose an MTC task from a series of stages.
@@ -35,9 +36,10 @@ private:
   double x_coord_; // 멤버 변수 이름 변경 (충돌 방지)
   double y_coord_; // 멤버 변수 이름 변경 (충돌 방지)
   double angle_;
+  int level_; // 1,2,3층
   const double cylinder_height = 0.03;
   const double place_ycoord = 0.13;
-  const int level = 1; // 1,2,3층
+
 };
 
 rclcpp::node_interfaces::NodeBaseInterface::SharedPtr MTCTaskNode::getNodeBaseInterface()
@@ -52,10 +54,13 @@ MTCTaskNode::MTCTaskNode(const rclcpp::NodeOptions& options)
   x_coord_ = node_->get_parameter("x_coord").get_parameter_value().get<double>();
   y_coord_ = node_->get_parameter("y_coord").get_parameter_value().get<double>();
   angle_ = node_->get_parameter("angle").get_parameter_value().get<double>();
+  level_ = node_->get_parameter("level").get_parameter_value().get<int>();
+
 
   RCLCPP_INFO(LOGGER, "Received x_coord: %f", x_coord_);
   RCLCPP_INFO(LOGGER, "Received y_coord: %f", y_coord_);
   RCLCPP_INFO(LOGGER, "Received angle: %f", angle_);
+  RCLCPP_INFO(LOGGER, "Received level: %d", level_);
 }
 
 void MTCTaskNode::setupPlanningScene()
@@ -107,6 +112,31 @@ void MTCTaskNode::doTask()
   }
 
   return;
+}
+
+void MTCTaskNode::calculation()
+{
+  double distance = std::sqrt(x_coord_ * x_coord_ + y_coord_ * y_coord_);
+
+  if (level_ == 1){ // 1층
+    if (0.10 <= distance && distance < 0.13) {
+        angle_ = 75.0;
+    } else if (0.13 <= distance && distance < 0.145) {
+        angle_ = 70.0;
+    } else if (0.145 <= distance && distance < 0.16) {
+        angle_ = 65.0;
+    } else if (0.16 <= distance && distance < 0.18) {
+        angle_ = 60.0;
+    } else if (0.18 <= distance && distance <= 0.21) {
+        angle_ = 55.0;
+    }
+    else {
+        rclcpp::shutdown();  // 노드 종료
+        return;
+    }
+  }
+
+
 }
 
 mtc::Task MTCTaskNode::createTask()
@@ -294,7 +324,8 @@ mtc::Task MTCTaskNode::createTask()
       target_pose_msg.header.frame_id = "world";
       target_pose_msg.pose.position.x = 0.0;
       target_pose_msg.pose.position.y = -place_ycoord;
-      target_pose_msg.pose.position.z = cylinder_height/2 + cylinder_height*(level - 1) + 0.00001;
+      double offset = (level_ > 1.0) ? 0.003 : 0.0; // 2,3층은 약간 위로
+      target_pose_msg.pose.position.z = cylinder_height/2 + cylinder_height*(level_ - 1) + 0.00001 + offset;
       target_pose_msg.pose.orientation.w = 1.0;
       stage->setPose(target_pose_msg);
       stage->setMonitoredStage(attach_object_stage);  // Hook into attach_object_stage
@@ -338,12 +369,12 @@ mtc::Task MTCTaskNode::createTask()
     task.add(std::move(place));
   }
 
-/*  {
+  {
     auto stage = std::make_unique<mtc::stages::MoveTo>("return home", sampling_planner);
     stage->properties().configureInitFrom(mtc::Stage::PARENT, { "group" });
     stage->setGoal("rest");
     task.add(std::move(stage));
-  } */
+  }
   return task;
 }
 
@@ -365,6 +396,7 @@ int main(int argc, char** argv)
   });
 
   mtc_task_node->setupPlanningScene();
+  mtc_task_node->calculation();
   mtc_task_node->doTask();
 
   spin_thread->join();

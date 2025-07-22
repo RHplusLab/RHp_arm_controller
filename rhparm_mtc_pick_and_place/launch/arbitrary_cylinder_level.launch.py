@@ -26,6 +26,12 @@ def generate_launch_description():
         description='Grasp Angle for the object placement.'
     )
 
+    level_arg = DeclareLaunchArgument(
+        'level',
+        default_value='1',       # 기본값 설정 (문자열로 전달)
+        description='Level for the object placement (1, 2, or 3).'
+    )
+
     # MTC Demo node
     pick_place_demo = Node(
         package="rhparm_mtc_pick_and_place",
@@ -36,7 +42,8 @@ def generate_launch_description():
             # 런치 인자를 파라미터로 노드에 전달
             {'x_coord': LaunchConfiguration('x_coord')},
             {'y_coord': LaunchConfiguration('y_coord')},
-            {'angle': LaunchConfiguration('angle')}
+            {'angle': LaunchConfiguration('angle')},
+            {'level': LaunchConfiguration('level')}
         ],
     )
 
@@ -44,5 +51,6 @@ def generate_launch_description():
         x_coord_arg,
         y_coord_arg,
         angle_arg,
+        level_arg,
         pick_place_demo
     ])
