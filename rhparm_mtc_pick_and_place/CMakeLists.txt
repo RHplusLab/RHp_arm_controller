@@ -9,6 +9,8 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(moveit_task_constructor_core REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(geometry_msgs REQUIRED)
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
@@ -17,13 +19,23 @@ find_package(rclcpp REQUIRED)
 add_executable(arbitrary_cylinder src/arbitrary_cylinder.cpp)
 add_executable(arbitrary_cylinder_stack src/arbitrary_cylinder_stack.cpp)
 add_executable(arbitrary_cylinder_level src/arbitrary_cylinder_level.cpp)
+add_executable(end_effector_subscriber src/end_effector_subscriber.cpp)
+
 ament_target_dependencies(arbitrary_cylinder moveit_task_constructor_core rclcpp)
 ament_target_dependencies(arbitrary_cylinder_stack moveit_task_constructor_core rclcpp)
 ament_target_dependencies(arbitrary_cylinder_level moveit_task_constructor_core rclcpp)
+ament_target_dependencies(end_effector_subscriber rclcpp tf2_ros geometry_msgs)
 
 install(TARGETS arbitrary_cylinder_level arbitrary_cylinder arbitrary_cylinder_stack
 DESTINATION lib/${PROJECT_NAME})
-
+install(
+  TARGETS
+    arbitrary_cylinder_level
+    arbitrary_cylinder
+    arbitrary_cylinder_stack
+    end_effector_subscriber
+  DESTINATION lib/${PROJECT_NAME}
+)
 if(BUILD_TESTING)
 find_package(ament_lint_auto REQUIRED)
 # the following line skips the linter which checks for copyrights
