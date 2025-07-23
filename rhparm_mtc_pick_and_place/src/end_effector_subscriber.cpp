@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <iostream>
+#include "std_msgs/msg/string.hpp"
 
 class EndEffectorSubscriber : public rclcpp::Node
 {
@@ -18,6 +19,10 @@ public:
         timer_ = create_wall_timer(
             std::chrono::milliseconds(500),
             std::bind(&EndEffectorSubscriber::on_timer, this));
+
+        // ✅ 추가된 Subscriber 초기화 코드
+        strategy_subscriber_ = this->create_subscription<std_msgs::msg::String>(
+            "/grasp_strategy", 10, std::bind(&EndEffectorSubscriber::strategy_callback, this, std::placeholders::_1));
     }
 
 private:
@@ -26,6 +31,15 @@ private:
     tf2_ros::Buffer tf_buffer_;
     tf2_ros::TransformListener tf_listener_;
     rclcpp::TimerBase::SharedPtr timer_;
+
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr strategy_subscriber_;
+    std::string last_strategy_ = "z_zero";
+
+    // ✅ 추가된 콜백 함수
+    void strategy_callback(const std_msgs::msg::String & msg) {
+        last_strategy_ = msg.data;
+        RCLCPP_INFO(this->get_logger(), "Received strategy: '%s'", msg.data.c_str());
+    }
 };
 
 void EndEffectorSubscriber::on_timer()
@@ -60,7 +74,18 @@ void EndEffectorSubscriber::on_timer()
         R[2][1] = 2 * y * z + 2 * x * w;
         R[2][2] = 1 - 2 * x * x - 2 * y * y;
 
-        std::array<double, 3> v = {0.1014, 0.0, 0.0201};
+        // ✅ 추가/수정된 부분 시작
+        double z_offset = 0.0;
+        if (last_strategy_ == "z_down") {
+            z_offset = 0.005;
+        }
+
+        std::array<double, 3> v;
+        v[0] = 0.0464 + 0.055;
+        v[1] = 0.0;
+        v[2] = 0.0201 - z_offset; // z_offset 반영
+        // ✅ 추가/수정된 부분 끝
+
         std::array<double, 3> result = {0.0, 0.0, 0.0};
         double cos_z = R[2][2];
         double angle_rad = std::acos(std::clamp(cos_z, -1.0, 1.0));
