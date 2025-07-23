@@ -174,7 +174,7 @@ void MTCTaskNode::calculation()
       return;
     }
   }
-  if (level_ == 2)
+  else if (level_ == 2)
   { // 2층
     if (0.12 <= distance && distance < 0.15) angle_ = 68.0;
     else if (0.15 <= distance && distance < 0.175) angle_ = 60.0;
@@ -183,6 +183,18 @@ void MTCTaskNode::calculation()
     else if (0.210 <= distance && distance < 0.225) angle_ = 45.0;
     else if (0.225 <= distance && distance < 0.245) angle_ = 35.0;
     else if (0.245 <= distance && distance <= 0.265) angle_ = 26.0;
+    else {
+      rclcpp::shutdown(); // 노드 종료
+      return;
+    }
+  }
+  else if (level_ == 3)
+  { // 3층
+    if (0.133 <= distance && distance < 0.195) angle_ = 55.0;
+    else if (0.195 <= distance && distance < 0.210) angle_ = 50.0;
+    else if (0.210 <= distance && distance < 0.235) angle_ = 45.0;
+    else if (0.235 <= distance && distance < 0.250) angle_ = 35.0;
+    else if (0.250 <= distance && distance <= 0.270) angle_ = 27.0;
     else {
       rclcpp::shutdown(); // 노드 종료
       return;
