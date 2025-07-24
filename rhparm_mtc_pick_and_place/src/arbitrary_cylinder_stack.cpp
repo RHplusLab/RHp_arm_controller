@@ -4,6 +4,7 @@
 #include <moveit/task_constructor/task.h>
 #include <moveit/task_constructor/solvers.h>
 #include <moveit/task_constructor/stages.h>
+#include <std_msgs/msg/string.hpp> // topic 발행
 
 #if __has_include(<tf2_geometry_msgs/tf2_geometry_msgs.hpp>)
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -37,16 +38,16 @@ private:
   mtc::Task createTask();
   mtc::Task task_;
   rclcpp::Node::SharedPtr node_;
-  double x1_coord_;
-  double y1_coord_;
-  double x2_coord_;
-  double y2_coord_;
-  double x3_coord_;
-  double y3_coord_;
-  double place_coord_y;
-  double place_coord_z[3];
-  int gripper_angle[3];
+  const double gap = 0.00001; // 고정 위치
   const double cylinder_height = 0.03;
+
+  double x_coord[3];
+  double y_coord[3];
+  const double place_ycoord = 0.13;
+  const double place_zcoord[3] = {gap + cylinder_height * 0.5, gap + cylinder_height * 1.5, gap + cylinder_height * 2.5 };
+  double gripper_angle[3];
+
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr grasp_strategy_publisher_; // Publisher 추가
 };
 
 rclcpp::node_interfaces::NodeBaseInterface::SharedPtr MTCTaskNode::getNodeBaseInterface()
@@ -58,93 +59,69 @@ MTCTaskNode::MTCTaskNode(const rclcpp::NodeOptions &options)
     : node_{std::make_shared<rclcpp::Node>("mtc_node", options)}
 {
   // 런치 인자에서 값을 받아오도록 파라미터 가져오기
-  x1_coord_ = node_->get_parameter("x1_coord").get_parameter_value().get<double>();
-  y1_coord_ = node_->get_parameter("y1_coord").get_parameter_value().get<double>();
-  x2_coord_ = node_->get_parameter("x2_coord").get_parameter_value().get<double>();
-  y2_coord_ = node_->get_parameter("y2_coord").get_parameter_value().get<double>();
-  x3_coord_ = node_->get_parameter("x3_coord").get_parameter_value().get<double>();
-  y3_coord_ = node_->get_parameter("y3_coord").get_parameter_value().get<double>();
+  x_coord[0] = node_->get_parameter("x1_coord").get_parameter_value().get<double>();
+  y_coord[0] = node_->get_parameter("y1_coord").get_parameter_value().get<double>();
+  x_coord[1] = node_->get_parameter("x2_coord").get_parameter_value().get<double>();
+  y_coord[1] = node_->get_parameter("y2_coord").get_parameter_value().get<double>();
+  x_coord[2] = node_->get_parameter("x3_coord").get_parameter_value().get<double>();
+  y_coord[2] = node_->get_parameter("y3_coord").get_parameter_value().get<double>();
 
-  RCLCPP_INFO(LOGGER, "Received x1_coord: %f", x1_coord_);
-  RCLCPP_INFO(LOGGER, "Received y1_coord: %f", y1_coord_);
-  RCLCPP_INFO(LOGGER, "Received x2_coord: %f", x2_coord_);
-  RCLCPP_INFO(LOGGER, "Received y2_coord: %f", y2_coord_);
-  RCLCPP_INFO(LOGGER, "Received x3_coord: %f", x3_coord_);
-  RCLCPP_INFO(LOGGER, "Received y3_coord: %f", y3_coord_);
+  RCLCPP_INFO(LOGGER, "Received x1_coord: %f", x_coord[0]);
+  RCLCPP_INFO(LOGGER, "Received y1_coord: %f", y_coord[0]);
+  RCLCPP_INFO(LOGGER, "Received x2_coord: %f", x_coord[1]);
+  RCLCPP_INFO(LOGGER, "Received y2_coord: %f", y_coord[1]);
+  RCLCPP_INFO(LOGGER, "Received x3_coord: %f", x_coord[2]);
+  RCLCPP_INFO(LOGGER, "Received y3_coord: %f", y_coord[2]);
+
+  // Publisher 초기화
+  grasp_strategy_publisher_ = node_->create_publisher<std_msgs::msg::String>("/grasp_strategy", 10);
 }
 
 void MTCTaskNode::calculation()
 {
-  double distance1 = std::sqrt(x1_coord_ * x1_coord_ + y1_coord_ * y1_coord_);
-  double distance2 = std::sqrt(x2_coord_ * x2_coord_ + y2_coord_ * y2_coord_);
-  double distance3 = std::sqrt(x3_coord_ * x3_coord_ + y3_coord_ * y3_coord_);
+  double distance[3];
+  distance[0] = std::sqrt(x_coord[0] * x_coord[0] + y_coord[0] * y_coord[0]);
+  distance[1] = std::sqrt(x_coord[1] * x_coord[1] + y_coord[1] * y_coord[1]);
+  distance[2] = std::sqrt(x_coord[2] * x_coord[2] + y_coord[2] * y_coord[2]);
 
-  RCLCPP_INFO(LOGGER, "Distance1: %f", distance1);
-  RCLCPP_INFO(LOGGER, "Distance2: %f", distance2);
-  RCLCPP_INFO(LOGGER, "Distance3: %f", distance3);
+  RCLCPP_INFO(LOGGER, "Distance1: %f", distance[0]);
+  RCLCPP_INFO(LOGGER, "Distance2: %f", distance[1]);
+  RCLCPP_INFO(LOGGER, "Distance3: %f", distance[2]);
 
-  if (0.11 <= distance1 && distance1 < 0.16)
-  {
-    gripper_angle[0] = 70;
-    place_coord_y = 0.11;
-    place_coord_z[0] = 0.0;
+  // 1층
+  if (0.10 <= distance[0] && distance[0] < 0.13) gripper_angle[0] = 75.0;
+  else if (0.13 <= distance[0] && distance[0] < 0.145) gripper_angle[0] = 70.0;
+  else if (0.145 <= distance[0] && distance[0] < 0.16) gripper_angle[0] = 65.0;
+  else if (0.16 <= distance[0] && distance[0] < 0.18) gripper_angle[0] = 60.0;
+  else if (0.18 <= distance[0] && distance[0] <= 0.21) gripper_angle[0] = 55.0;
+  else {
+      RCLCPP_ERROR(LOGGER, "Invalid distance for Distance1: %f", distance[0]);
+      rclcpp::shutdown(); // 노드 종료
+      return;
   }
-  else if (0.16 <= distance1 && distance1 < 0.19)
-  {
-    gripper_angle[0] = 60;
-    place_coord_y = 0.13;
-    place_coord_z[0] = 0.0;
-  }
-  else if (0.19 <= distance1 && distance1 < 0.20)
-  {
-    gripper_angle[0] = 50;
-    place_coord_y = 0.135;
-    place_coord_z[0] = 0.0;
-  }
-  else
-  {
+
+  // 2층
+  if (0.12 <= distance[1] && distance[1] < 0.15) gripper_angle[1] = 68.0;
+  else if (0.15 <= distance[1] && distance[1] < 0.175) gripper_angle[1] = 60.0;
+  else if (0.175 <= distance[1] && distance[1] < 0.195) gripper_angle[1] = 55.0;
+  else if (0.195 <= distance[1] && distance[1] < 0.210) gripper_angle[1] = 50.0;
+  else if (0.210 <= distance[1] && distance[1] < 0.225) gripper_angle[1] = 45.0;
+  else if (0.225 <= distance[1] && distance[1] < 0.245) gripper_angle[1] = 35.0;
+  else if (0.245 <= distance[1] && distance[1] <= 0.265) gripper_angle[1] = 26.0;
+  else {
+    RCLCPP_ERROR(LOGGER, "Invalid distance for Distance2: %f", distance[1]);
     rclcpp::shutdown(); // 노드 종료
     return;
   }
 
-  if (0.11 <= distance2 && distance2 < 0.16)
-  {
-    gripper_angle[1] = 70;
-    place_coord_z[1] = cylinder_height;
-  }
-  else if (0.16 <= distance2 && distance2 < 0.19)
-  {
-    gripper_angle[1] = 60;
-    place_coord_z[1] = cylinder_height;
-  }
-  else if (0.19 <= distance2 && distance2 < 0.20)
-  {
-    gripper_angle[1] = 50;
-    place_coord_z[1] = cylinder_height;
-  }
-  else
-  {
-    rclcpp::shutdown(); // 노드 종료
-    return;
-  }
-
-  if (0.11 <= distance3 && distance3 < 0.16)
-  {
-    gripper_angle[2] = 70;
-    place_coord_z[2] = cylinder_height*2;
-  }
-  else if (0.16 <= distance3 && distance3 < 0.19)
-  {
-    gripper_angle[2] = 60;
-    place_coord_z[2] = cylinder_height*2;
-  }
-  else if (0.19 <= distance3 && distance3 < 0.20)
-  {
-    gripper_angle[2] = 50;
-    place_coord_z[2] = cylinder_height*2;
-  }
-  else
-  {
+  // 3층
+  if (0.135 <= distance[2] && distance[2] < 0.195) gripper_angle[2] = 55.0;
+  else if (0.195 <= distance[2] && distance[2] < 0.210) gripper_angle[2] = 50.0;
+  else if (0.210 <= distance[2] && distance[2] < 0.235) gripper_angle[2] = 45.0;
+  else if (0.235 <= distance[2] && distance[2] < 0.250) gripper_angle[2] = 35.0;
+  else if (0.250 <= distance[2] && distance[2] <= 0.270) gripper_angle[2] = 27.0;
+  else {
+    RCLCPP_ERROR(LOGGER, "Invalid distance for Distance3: %f", distance[2]);
     rclcpp::shutdown(); // 노드 종료
     return;
   }
@@ -160,9 +137,9 @@ void MTCTaskNode::setupPlanningScene()
   object1.primitives[0].dimensions = {cylinder_height, 0.02};
 
   geometry_msgs::msg::Pose pose1;
-  pose1.position.x = x1_coord_;    // 런치 인자로부터 받은 값 사용
-  pose1.position.y = y1_coord_;    // 런치 인자로부터 받은 값 사용
-  pose1.position.z = cylinder_height/2 + 0.001; // 땅바닥에 붙음
+  pose1.position.x = x_coord[0];    // 런치 인자로부터 받은 값 사용
+  pose1.position.y = y_coord[0];    // 런치 인자로부터 받은 값 사용
+  pose1.position.z = cylinder_height * 0.5 + gap; // 땅바닥에 붙음
   pose1.orientation.w = 1.0;
   object1.pose = pose1;
 
@@ -177,9 +154,9 @@ void MTCTaskNode::setupPlanningScene()
   object2.primitives[0].dimensions = {cylinder_height, 0.02};
 
   geometry_msgs::msg::Pose pose2;
-  pose2.position.x = x2_coord_;    // 런치 인자로부터 받은 값 사용
-  pose2.position.y = y2_coord_;    // 런치 인자로부터 받은 값 사용
-  pose2.position.z = cylinder_height/2 + 0.001; // 땅바닥에 붙음
+  pose2.position.x = x_coord[1];    // 런치 인자로부터 받은 값 사용
+  pose2.position.y = y_coord[1];    // 런치 인자로부터 받은 값 사용
+  pose2.position.z = cylinder_height * 0.5 + gap; // 땅바닥에 붙음
   pose2.orientation.w = 1.0;
   object2.pose = pose2;
   psi.applyCollisionObject(object2);
@@ -192,9 +169,9 @@ void MTCTaskNode::setupPlanningScene()
   object3.primitives[0].dimensions = {cylinder_height, 0.02};
 
   geometry_msgs::msg::Pose pose3;
-  pose3.position.x = x3_coord_;    // 런치 인자로부터 받은 값 사용
-  pose3.position.y = y3_coord_;    // 런치 인자로부터 받은 값 사용
-  pose3.position.z = cylinder_height/2 + 0.001; // 땅바닥에 붙음
+  pose3.position.x = x_coord[2];    // 런치 인자로부터 받은 값 사용
+  pose3.position.y = y_coord[2];    // 런치 인자로부터 받은 값 사용
+  pose3.position.z = cylinder_height * 0.5 + gap; // 땅바닥에 붙음
   pose3.orientation.w = 1.0;
   object3.pose = pose3;
   psi.applyCollisionObject(object3);

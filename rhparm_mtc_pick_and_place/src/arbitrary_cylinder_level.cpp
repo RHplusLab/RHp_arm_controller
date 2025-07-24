@@ -40,7 +40,7 @@ private:
   int level_; // 1,2,3층
   const double cylinder_height = 0.03;
   const double place_ycoord = 0.13;
-  const double gap = 0.003; // 고정 위치
+  const double gap = 0.00001; // 고정 위치
 
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr grasp_strategy_publisher_; // Publisher 추가
 };
@@ -94,13 +94,13 @@ void MTCTaskNode::setupPlanningScene()
     obstacle1.header.frame_id = "world";
     obstacle1.primitives.resize(1);
     obstacle1.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
-    obstacle1.primitives[0].dimensions = {cylinder_height + gap - 0.00001, 0.02};
+    obstacle1.primitives[0].dimensions = {cylinder_height - gap, 0.02};
 
     // 고정 위치로 오버라이드
     geometry_msgs::msg::Pose obstacle1_pose;
     obstacle1_pose.position.x = 0.0;             // 수정: 0 고정
     obstacle1_pose.position.y = -place_ycoord;
-    obstacle1_pose.position.z = (cylinder_height + gap - 0.00001)/2 + 0.00001; // 원래와 동일
+    obstacle1_pose.position.z = (cylinder_height - gap)/2 + gap; // 원래와 동일
     obstacle1_pose.orientation.w = 1.0;
     obstacle1.pose = obstacle1_pose;
 
@@ -119,7 +119,7 @@ void MTCTaskNode::setupPlanningScene()
     geometry_msgs::msg::Pose obstacle2_pose;
     obstacle2_pose.position.x = 0.0;             // 수정: 0 고정
     obstacle2_pose.position.y = -place_ycoord;
-    obstacle2_pose.position.z = (cylinder_height*2 + gap - 0.00001)/2 + 0.00001; // 원래와 동일
+    obstacle2_pose.position.z = (cylinder_height*2 - gap)/2 + gap; // 원래와 동일
     obstacle2_pose.orientation.w = 1.0;
     obstacle2.pose = obstacle2_pose;
 
@@ -190,7 +190,7 @@ void MTCTaskNode::calculation()
   }
   else if (level_ == 3)
   { // 3층
-    if (0.133 <= distance && distance < 0.195) angle_ = 55.0;
+    if (0.135 <= distance && distance < 0.195) angle_ = 55.0;
     else if (0.195 <= distance && distance < 0.210) angle_ = 50.0;
     else if (0.210 <= distance && distance < 0.235) angle_ = 45.0;
     else if (0.235 <= distance && distance < 0.250) angle_ = 35.0;
@@ -396,8 +396,24 @@ mtc::Task MTCTaskNode::createTask()
     place->properties().configureInitFrom(mtc::Stage::PARENT,
                                           {"eef", "group", "ik_frame"});
 
+    {
+      auto stage =
+          std::make_unique<mtc::stages::MoveRelative>("descend object", cartesian_planner);
+      stage->properties().configureInitFrom(mtc::Stage::PARENT, {"group"});
+      stage->setMinMaxDistance(0.003, 0.2);
+      stage->setIKFrame(hand_frame);
+      stage->properties().set("marker_ns", "descend_object");
+
+      // Set downward direction
+      geometry_msgs::msg::Vector3Stamped vec;
+      vec.header.frame_id = "world";
+      vec.vector.z = -1.0;
+      stage->setDirection(vec);
+      place->insert(std::move(stage));
+    }
+
     /****************************************************
-  ---- * Generate Place Pose                *
+           *    Generate Place Pose      *
      ***************************************************/
     {
       // Sample place pose
@@ -410,8 +426,7 @@ mtc::Task MTCTaskNode::createTask()
       target_pose_msg.header.frame_id = "world";
       target_pose_msg.pose.position.x = 0.0;
       target_pose_msg.pose.position.y = -place_ycoord;
-      double offset = (level_ > 1.0) ? gap : 0.0; // 2,3층은 약간 위로
-      target_pose_msg.pose.position.z = cylinder_height / 2 + cylinder_height * (level_ - 1) + 0.00001 + offset;
+      target_pose_msg.pose.position.z = cylinder_height / 2 + cylinder_height * (level_ - 1) + gap;
       target_pose_msg.pose.orientation.w = 1.0;
       stage->setPose(target_pose_msg);
       stage->setMonitoredStage(attach_object_stage); // Hook into attach_object_stage
