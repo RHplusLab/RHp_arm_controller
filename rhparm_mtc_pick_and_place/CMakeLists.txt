@@ -17,7 +17,19 @@ find_package(rhp_apriltag_msgs REQUIRED)
 
 # 실행할 executable들 추가
 add_executable(vision_cylinder_one src/vision_cylinder_one.cpp)
-ament_target_dependencies(vision_cylinder_one moveit_task_constructor_core rclcpp rhp_apriltag_msgs)
+add_executable(apriltag_processor_node src/apriltag_processor_node.cpp)
+ament_target_dependencies(
+  vision_cylinder_one
+  moveit_task_constructor_core
+  rclcpp
+  rhp_apriltag_msgs
+)
+
+ament_target_dependencies(
+  apriltag_processor_node
+  rclcpp
+  rhp_apriltag_msgs
+)
 
 install(TARGETS vision_cylinder_one
 DESTINATION lib/${PROJECT_NAME})
@@ -36,3 +48,4 @@ endif()
 ament_package()
 
 install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
+install(TARGETS apriltag_processor_node DESTINATION lib/${PROJECT_NAME})
