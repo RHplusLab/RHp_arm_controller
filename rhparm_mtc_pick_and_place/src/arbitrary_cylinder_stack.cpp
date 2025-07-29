@@ -44,7 +44,7 @@ private:
   double x_coord[3];
   double y_coord[3];
   const double place_ycoord = 0.13;
-  const double place_zcoord[3] = {gap + cylinder_height * 0.5, gap + cylinder_height * 1.5, gap + cylinder_height * 2.5};
+  const double place_zcoord[3] = {gap + cylinder_height * 0.5, 2*gap + cylinder_height * 1.5, 3*gap + cylinder_height * 2.5};
   double gripper_angle[3];
 
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr grasp_strategy_publisher_; // Publisher 추가
