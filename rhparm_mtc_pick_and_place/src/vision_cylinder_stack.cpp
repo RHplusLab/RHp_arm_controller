@@ -44,15 +44,16 @@ private:
   rclcpp::Subscription<rhp_apriltag_msgs::msg::AprilTagDetectionArray>::SharedPtr a_tag_sub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr grasp_strategy_publisher_;
 
-  // → 3개 좌표 저장용
-  double x_coord[3];
-  double y_coord[3];
   std::atomic<int> detections_cnt_{0};
   std::mutex coord_mutex_;
-  double gap = 0.00001;
-  double place_ycoord{0.13};
-  double place_zcoord[3];
-  double cylinder_height{0.03};
+
+  const double gap = 0.00001; // 고정 위치
+  const double cylinder_height = 0.03;
+
+  double x_coord[3];
+  double y_coord[3];
+  const double place_ycoord = 0.13;
+  const double place_zcoord[3] = {gap + cylinder_height * 0.5, 2*gap + cylinder_height * 1.5, 3*gap + cylinder_height * 2.5};
   double gripper_angle[3];
 };
 
@@ -85,8 +86,8 @@ void MTCTaskNode::apriltagCallback(
     x_coord[idx] = det.pose.pose.pose.position.x;
     y_coord[idx] = det.pose.pose.pose.position.y;
     RCLCPP_INFO(node_->get_logger(),
-                "[%d] → idx=%d : x=%.3f, y=%.3f",
-                det.id, idx, x_coord[idx], y_coord[idx]);
+                "[id : %d] : x=%.3f, y=%.3f",
+                det.id, x_coord[idx], y_coord[idx]);
 
     detections_cnt_++;
   }
@@ -107,46 +108,51 @@ void MTCTaskNode::apriltagCallback(
 
 void MTCTaskNode::calculation()
 {
-  // 1) 거리 계산
-  std::array<double,3> dist;
-  for (int i = 0; i < 3; ++i)
-    dist[i] = std::hypot(x_coord[i], y_coord[i]);
+  double distance[3];
+  distance[0] = std::sqrt(x_coord[0] * x_coord[0] + y_coord[0] * y_coord[0]);
+  distance[1] = std::sqrt(x_coord[1] * x_coord[1] + y_coord[1] * y_coord[1]);
+  distance[2] = std::sqrt(x_coord[2] * x_coord[2] + y_coord[2] * y_coord[2]);
 
-  // 2) 레벨별 (min, max) 범위와 대응 각도
-  const std::array<std::vector<std::pair<double,double>>,3> ranges = {{
-    { {0.10,0.13}, {0.13,0.145}, {0.145,0.16}, {0.16,0.18}, {0.18,0.21} },      // 1층
-    { {0.12,0.15}, {0.15,0.175}, {0.175,0.195}, {0.195,0.210},
-      {0.210,0.225}, {0.225,0.245}, {0.245,0.265} },                           // 2층
-    { {0.135,0.195}, {0.195,0.210}, {0.210,0.235}, {0.235,0.250}, {0.250,0.270} } // 3층
-  }};
+  RCLCPP_INFO(LOGGER, "Distance1: %f", distance[0]);
+  RCLCPP_INFO(LOGGER, "Distance2: %f", distance[1]);
+  RCLCPP_INFO(LOGGER, "Distance3: %f", distance[2]);
 
-  const std::array<std::vector<double>,3> angles = {{
-    {75.0, 70.0, 65.0, 60.0, 55.0},
-    {68.0, 60.0, 55.0, 50.0, 45.0, 35.0, 26.0},
-    {55.0, 50.0, 45.0, 35.0, 27.0}
-  }};
-
-  // 3) 반복문으로 각 레벨 처리
-  for (int i = 0; i < 3; ++i)
-  {
-    bool matched = false;
-    for (size_t j = 0; j < ranges[i].size(); ++j)
-    {
-      if (dist[i] >= ranges[i][j].first && dist[i] < ranges[i][j].second)
-      {
-        gripper_angle[i] = angles[i][j];
-        matched = true;
-        break;
-      }
-    }
-    if (!matched)
-    {
-      RCLCPP_ERROR(LOGGER, "Invalid distance[%d]=%.3f", i, dist[i]);
-      rclcpp::shutdown();
+  // 1층
+  if (0.10 <= distance[0] && distance[0] < 0.13) gripper_angle[0] = 75.0;
+  else if (0.13 <= distance[0] && distance[0] < 0.145) gripper_angle[0] = 70.0;
+  else if (0.145 <= distance[0] && distance[0] < 0.16) gripper_angle[0] = 65.0;
+  else if (0.16 <= distance[0] && distance[0] < 0.18) gripper_angle[0] = 60.0;
+  else if (0.18 <= distance[0] && distance[0] <= 0.21) gripper_angle[0] = 55.0;
+  else {
+      RCLCPP_ERROR(LOGGER, "Invalid distance for Distance1: %f", distance[0]);
+      rclcpp::shutdown(); // 노드 종료
       return;
-    }
-    RCLCPP_INFO(LOGGER, "Level %d: distance=%.3f → gripper_angle=%.1f",
-                i+1, dist[i], gripper_angle[i]);
+  }
+
+  // 2층
+  if (0.12 <= distance[1] && distance[1] < 0.15) gripper_angle[1] = 68.0;
+  else if (0.15 <= distance[1] && distance[1] < 0.175) gripper_angle[1] = 60.0;
+  else if (0.175 <= distance[1] && distance[1] < 0.195) gripper_angle[1] = 55.0;
+  else if (0.195 <= distance[1] && distance[1] < 0.210) gripper_angle[1] = 50.0;
+  else if (0.210 <= distance[1] && distance[1] < 0.225) gripper_angle[1] = 45.0;
+  else if (0.225 <= distance[1] && distance[1] < 0.245) gripper_angle[1] = 35.0;
+  else if (0.245 <= distance[1] && distance[1] <= 0.265) gripper_angle[1] = 26.0;
+  else {
+    RCLCPP_ERROR(LOGGER, "Invalid distance for Distance2: %f", distance[1]);
+    rclcpp::shutdown(); // 노드 종료
+    return;
+  }
+
+  // 3층
+  if (0.135 <= distance[2] && distance[2] < 0.195) gripper_angle[2] = 55.0;
+  else if (0.195 <= distance[2] && distance[2] < 0.210) gripper_angle[2] = 50.0;
+  else if (0.210 <= distance[2] && distance[2] < 0.235) gripper_angle[2] = 45.0;
+  else if (0.235 <= distance[2] && distance[2] < 0.250) gripper_angle[2] = 35.0;
+  else if (0.250 <= distance[2] && distance[2] <= 0.270) gripper_angle[2] = 27.0;
+  else {
+    RCLCPP_ERROR(LOGGER, "Invalid distance for Distance3: %f", distance[2]);
+    rclcpp::shutdown(); // 노드 종료
+    return;
   }
 }
 
@@ -208,9 +214,11 @@ void MTCTaskNode::setupPlanningScene()
 
 void MTCTaskNode::doTask()
 {
+  const int MAX_PLAN_ATTEMPTS = 10; // 최대 재시도 횟수
+
   for (int level = 1; level <= 3; ++level)
   {
-    RCLCPP_INFO(LOGGER, "=== Start planning for object%d ===", level);
+    RCLCPP_INFO(LOGGER, "=== Start task for object%d ===", level);
 
     task_ = createTask(level);
 
@@ -221,26 +229,49 @@ void MTCTaskNode::doTask()
     catch (const mtc::InitStageException &e)
     {
       RCLCPP_ERROR_STREAM(LOGGER, "Task initialization failed for object" << level << ": " << e);
-      continue;
+      continue; // 초기화 실패 시 다음 레벨로 넘어감
     }
 
-    if (!task_.plan(10 /* max_solutions */))
+    // --- Plan 재시도 로직 ---
+    bool plan_success = false;
+    int plan_attempts = 0;
+    while (plan_attempts < MAX_PLAN_ATTEMPTS && !plan_success && rclcpp::ok())
     {
-      RCLCPP_ERROR_STREAM(LOGGER, "Task planning failed for object" << level);
+      plan_attempts++;
+      RCLCPP_INFO(LOGGER, "Planning attempt %d/%d for object%d...", plan_attempts, MAX_PLAN_ATTEMPTS, level);
+      plan_success = (task_.plan(10 /* max_solutions */) == moveit_msgs::msg::MoveItErrorCodes::SUCCESS);
+
+      if (!plan_success && plan_attempts < MAX_PLAN_ATTEMPTS) {
+        RCLCPP_WARN(LOGGER, "Planning failed. Retrying in 1 second...");
+        rclcpp::sleep_for(std::chrono::seconds(1)); // 재시도 전 잠시 대기
+      }
+    }
+
+    // 재시도 후에도 plan에 실패하면 다음 레벨로 넘어감
+    if (!plan_success)
+    {
+      RCLCPP_ERROR_STREAM(LOGGER, "Task planning failed for object" << level << " after " << plan_attempts << " attempts. Skipping.");
       continue;
     }
 
+    // --- Plan 성공 시 Execute ---
+    RCLCPP_INFO(LOGGER, "Planning successful! Executing task for object%d...", level);
     task_.introspection().publishSolution(*task_.solutions().front());
 
     auto result = task_.execute(*task_.solutions().front());
     if (result.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS)
     {
       RCLCPP_ERROR_STREAM(LOGGER, "Task execution failed for object" << level);
+      // 실행 실패 시에도 다음 레벨로 넘어갑니다.
       continue;
     }
 
     RCLCPP_INFO(LOGGER, "=== Successfully executed object%d ===", level);
   }
+
+  // 모든 작업이 끝나면 노드를 종료합니다.
+  RCLCPP_INFO(LOGGER, "All tasks completed. Shutting down.");
+  rclcpp::shutdown();
 }
 
 mtc::Task MTCTaskNode::createTask(int level)
@@ -330,13 +361,14 @@ mtc::Task MTCTaskNode::createTask(int level)
         grasp_strategy_publisher_->publish(msg);
         RCLCPP_INFO(LOGGER, "grasp_frame_transform.translation : z_down");
         grasp_frame_transform.translation().x() = 0.055;
-        grasp_frame_transform.translation().z() = -0.005;
+        grasp_frame_transform.translation().z() = -0.006;
       } else {
         auto msg = std_msgs::msg::String();
         msg.data = "z_zero";
         grasp_strategy_publisher_->publish(msg);
         RCLCPP_INFO(LOGGER, "grasp_frame_transform.translation : z_zero");
         grasp_frame_transform.translation().x() = 0.055;
+        grasp_frame_transform.translation().z() = -0.003;
       }
 
       auto wrapper = std::make_unique<mtc::stages::ComputeIK>("grasp pose IK", std::move(stage));
@@ -405,7 +437,7 @@ mtc::Task MTCTaskNode::createTask(int level)
     {
       auto stage = std::make_unique<mtc::stages::MoveRelative>("descend object", cartesian_planner);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, {"group"});
-      stage->setMinMaxDistance(0.003, 0.2);
+      stage->setMinMaxDistance(0.008, 0.2);
       stage->setIKFrame(hand_frame);
       stage->properties().set("marker_ns", "descend_object");
       geometry_msgs::msg::Vector3Stamped vec;
@@ -485,11 +517,26 @@ int main(int argc, char **argv)
 
   auto mtc_task_node = std::make_shared<MTCTaskNode>(options);
   rclcpp::executors::MultiThreadedExecutor executor;
-
   executor.add_node(mtc_task_node->getNodeBaseInterface());
+
+
+  // 4. 카운트다운
+  for (int i = 3; i > 0; --i) {
+      RCLCPP_INFO(LOGGER, "Capturing in %d...", i);
+      // rclcpp::ok()를 확인하여 중간에 종료 신호가 오면 멈춥니다.
+      if (!rclcpp::ok()) {
+        return 0;
+      }
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+  }
+
+  if (rclcpp::ok()) {
+    RCLCPP_INFO(LOGGER, "Capturing pose now! Waiting for topic...");
+  }
+
+  // 5. MTC 작업 실행
   executor.spin();
 
   rclcpp::shutdown();
   return 0;
 }
-s
