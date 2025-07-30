@@ -23,8 +23,8 @@ private:
       [](const auto &a, const auto &b){ return a.id < b.id; });
 
     // 2) 레벨별 거리 범위 정의
-    const double min_th[3] = {0.10,  0.15,   0.133};
-    const double max_th[3] = {0.21,  0.265,  0.270};
+    const double min_th[3] = {0.10,  0.15,   0.135};
+    const double max_th[3] = {0.21,  0.265,  0.240};
 
     // 3) 최대 3개 태그를 한 줄로 출력
     std::ostringstream oss;

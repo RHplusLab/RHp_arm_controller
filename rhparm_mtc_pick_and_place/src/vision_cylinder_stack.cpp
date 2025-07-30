@@ -147,8 +147,7 @@ void MTCTaskNode::calculation()
   if (0.135 <= distance[2] && distance[2] < 0.195) gripper_angle[2] = 55.0;
   else if (0.195 <= distance[2] && distance[2] < 0.210) gripper_angle[2] = 50.0;
   else if (0.210 <= distance[2] && distance[2] < 0.235) gripper_angle[2] = 45.0;
-  else if (0.235 <= distance[2] && distance[2] < 0.250) gripper_angle[2] = 35.0;
-  else if (0.250 <= distance[2] && distance[2] <= 0.270) gripper_angle[2] = 27.0;
+  else if (0.235 <= distance[2] && distance[2] <= 0.240) gripper_angle[2] = 35.0;
   else {
     RCLCPP_ERROR(LOGGER, "Invalid distance for Distance3: %f", distance[2]);
     rclcpp::shutdown(); // 노드 종료
@@ -437,7 +436,7 @@ mtc::Task MTCTaskNode::createTask(int level)
     {
       auto stage = std::make_unique<mtc::stages::MoveRelative>("descend object", cartesian_planner);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, {"group"});
-      stage->setMinMaxDistance(0.008, 0.2);
+      stage->setMinMaxDistance(0.010, 0.2);
       stage->setIKFrame(hand_frame);
       stage->properties().set("marker_ns", "descend_object");
       geometry_msgs::msg::Vector3Stamped vec;

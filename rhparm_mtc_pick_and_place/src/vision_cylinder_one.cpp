@@ -8,6 +8,7 @@
 #include <chrono>
 #include <thread>
 #include <atomic>
+#include <std_msgs/msg/string.hpp>
 
 #if __has_include(<tf2_geometry_msgs/tf2_geometry_msgs.hpp>)
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -42,11 +43,17 @@ private:
   rclcpp::Node::SharedPtr node_;
   mtc::Task task_;
   rclcpp::Subscription<rhp_apriltag_msgs::msg::AprilTagDetectionArray>::SharedPtr a_tag_sub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr grasp_strategy_publisher_;
 
-  double x_coord_ = 0.0;
-  double y_coord_ = 0.0;
-  double place_coord;
-  int gripper_angle;
+  const double gap = 0.00001; // 고정 위치
+  const double cylinder_height = 0.03;
+
+  double x_coord_;
+  double y_coord_;
+  const double place_ycoord = 0.13;
+  const double place_zcoord = gap + cylinder_height * 0.5;
+  double gripper_angle;
+
   std::atomic<bool> task_triggered_{false}; // Flag to ensure the task runs only once
 };
 
@@ -58,6 +65,7 @@ MTCTaskNode::MTCTaskNode(const rclcpp::NodeOptions& options)
   a_tag_sub_ = node_->create_subscription<rhp_apriltag_msgs::msg::AprilTagDetectionArray>(
       "/apriltag_detections", qos,
       std::bind(&MTCTaskNode::apriltagCallback, this, std::placeholders::_1));
+  grasp_strategy_publisher_ = node_->create_publisher<std_msgs::msg::String>("grasp_strategy", 10);
 }
 
 rclcpp::node_interfaces::NodeBaseInterface::SharedPtr MTCTaskNode::getNodeBaseInterface()
@@ -104,20 +112,17 @@ void MTCTaskNode::calculation()
 {
   double distance = std::sqrt(x_coord_ * x_coord_ + y_coord_ * y_coord_);
 
-    if (0.11 <= distance && distance < 0.16) {
-        gripper_angle = 70;
-        place_coord = 0.11;
-    } else if (0.16 <= distance && distance < 0.19) {
-        gripper_angle = 60;
-        place_coord = 0.13;
-    } else if (0.19 <= distance && distance < 0.20) {
-        gripper_angle = 50;
-        place_coord = 0.135;
-    }
-    else {
-        rclcpp::shutdown();  // 노드 종료
-        return;
-    }
+  // 1층
+  if (0.10 <= distance && distance < 0.13) gripper_angle = 75.0;
+  else if (0.13 <= distance && distance < 0.145) gripper_angle = 70.0;
+  else if (0.145 <= distance && distance < 0.16) gripper_angle = 65.0;
+  else if (0.16 <= distance && distance < 0.18) gripper_angle = 60.0;
+  else if (0.18 <= distance && distance <= 0.21) gripper_angle = 55.0;
+  else {
+      RCLCPP_ERROR(LOGGER, "Invalid distance : %f", distance);
+      rclcpp::shutdown(); // 노드 종료
+      return;
+  }
 }
 
 void MTCTaskNode::setupPlanningScene()
@@ -127,7 +132,7 @@ void MTCTaskNode::setupPlanningScene()
   object.header.frame_id = "world";
   object.primitives.resize(1);
   object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
-  object.primitives[0].dimensions = { 0.04, 0.02 };
+  object.primitives[0].dimensions = {cylinder_height, 0.02 };
 
   geometry_msgs::msg::Pose pose;
   pose.position.x = x_coord_; // Use captured x-coordinate
@@ -148,26 +153,50 @@ void MTCTaskNode::doTask()
   {
     task_.init();
   }
-  catch (mtc::InitStageException& e)
+  catch (mtc::InitStageException &e)
   {
     RCLCPP_ERROR_STREAM(LOGGER, e);
     return;
   }
 
-  if (!task_.plan(10 /* max_solutions */))
+  // --- Plan 재시도 로직 ---
+  const int MAX_PLAN_ATTEMPTS = 10; // 최대 재시도 횟수
+  bool plan_success = false;
+  int plan_attempts = 0;
+
+  while (plan_attempts < MAX_PLAN_ATTEMPTS && !plan_success && rclcpp::ok())
   {
-    RCLCPP_ERROR_STREAM(LOGGER, "Task planning failed");
+    plan_attempts++;
+    RCLCPP_INFO(LOGGER, "Planning attempt %d/%d...", plan_attempts, MAX_PLAN_ATTEMPTS);
+
+    // plan()의 결과값이 성공 코드와 같은지 비교
+    plan_success = (task_.plan(10 /* max_solutions */) == moveit_msgs::msg::MoveItErrorCodes::SUCCESS);
+
+    if (!plan_success && plan_attempts < MAX_PLAN_ATTEMPTS) {
+      RCLCPP_WARN(LOGGER, "Planning failed. Retrying in 1 second... ⏳");
+      rclcpp::sleep_for(std::chrono::seconds(1));
+    }
+  }
+
+  // 재시도 후에도 plan에 실패하면 함수 종료
+  if (!plan_success)
+  {
+    RCLCPP_ERROR_STREAM(LOGGER, "Task planning failed after " << plan_attempts << " attempts.");
     return;
   }
+
+  // --- Plan 성공 시 Execute ---
+  RCLCPP_INFO(LOGGER, "Planning successful! Executing task... ✅");
   task_.introspection().publishSolution(*task_.solutions().front());
 
   auto result = task_.execute(*task_.solutions().front());
   if (result.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS)
   {
-    RCLCPP_ERROR_STREAM(LOGGER, "Task execution failed");
+    RCLCPP_ERROR_STREAM(LOGGER, "Task execution failed.");
     return;
   }
 
+  RCLCPP_INFO(LOGGER, "Task executed successfully.");
   return;
 }
 
@@ -253,7 +282,22 @@ mtc::Task MTCTaskNode::createTask()
                              Eigen::AngleAxisd(-gripper_angle* M_PI / 180.0, Eigen::Vector3d::UnitY()) *
                              Eigen::AngleAxisd(0, Eigen::Vector3d::UnitZ());
       grasp_frame_transform.linear() = q.matrix();
-      grasp_frame_transform.translation().x() = 0.045;
+
+      if (gripper_angle < 40) {
+        auto msg = std_msgs::msg::String();
+        msg.data = "z_down";
+        grasp_strategy_publisher_->publish(msg);
+        RCLCPP_INFO(LOGGER, "grasp_frame_transform.translation : z_down");
+        grasp_frame_transform.translation().x() = 0.055;
+        grasp_frame_transform.translation().z() = -0.006;
+      } else {
+        auto msg = std_msgs::msg::String();
+        msg.data = "z_zero";
+        grasp_strategy_publisher_->publish(msg);
+        RCLCPP_INFO(LOGGER, "grasp_frame_transform.translation : z_zero");
+        grasp_frame_transform.translation().x() = 0.055;
+        grasp_frame_transform.translation().z() = -0.003;
+      }
 
       auto wrapper =
           std::make_unique<mtc::stages::ComputeIK>("grasp pose IK", std::move(stage));
@@ -328,6 +372,19 @@ mtc::Task MTCTaskNode::createTask()
                                           { "eef", "group", "ik_frame" });
 
     {
+      auto stage = std::make_unique<mtc::stages::MoveRelative>("descend object", cartesian_planner);
+      stage->properties().configureInitFrom(mtc::Stage::PARENT, {"group"});
+      stage->setMinMaxDistance(0.010, 0.2);
+      stage->setIKFrame(hand_frame);
+      stage->properties().set("marker_ns", "descend_object");
+      geometry_msgs::msg::Vector3Stamped vec;
+      vec.header.frame_id = "world";
+      vec.vector.z = -1.0;
+      stage->setDirection(vec);
+      place->insert(std::move(stage));
+    }
+
+    {
       auto stage = std::make_unique<mtc::stages::GeneratePlacePose>("generate place pose");
       stage->properties().configureInitFrom(mtc::Stage::PARENT);
       stage->properties().set("marker_ns", "place_pose");
@@ -336,8 +393,8 @@ mtc::Task MTCTaskNode::createTask()
       geometry_msgs::msg::PoseStamped target_pose_msg;
       target_pose_msg.header.frame_id = "world";
       target_pose_msg.pose.position.x = 0.0;
-      target_pose_msg.pose.position.y = -place_coord;
-      target_pose_msg.pose.position.z = 0.020 + 0.001;
+      target_pose_msg.pose.position.y = -place_ycoord;
+      target_pose_msg.pose.position.z = place_zcoord;
       target_pose_msg.pose.orientation.w = 1.0;
       stage->setPose(target_pose_msg);
       stage->setMonitoredStage(attach_object_stage);
