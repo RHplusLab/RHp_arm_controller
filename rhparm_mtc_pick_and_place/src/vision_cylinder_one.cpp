@@ -113,8 +113,7 @@ void MTCTaskNode::calculation()
   double distance = std::sqrt(x_coord_ * x_coord_ + y_coord_ * y_coord_);
 
   // 1층
-  if (0.10 <= distance && distance < 0.13) gripper_angle = 75.0;
-  else if (0.13 <= distance && distance < 0.145) gripper_angle = 70.0;
+ if (0.10 <= distance && distance < 0.145) gripper_angle = 70.0;
   else if (0.145 <= distance && distance < 0.16) gripper_angle = 65.0;
   else if (0.16 <= distance && distance < 0.18) gripper_angle = 60.0;
   else if (0.18 <= distance && distance <= 0.21) gripper_angle = 55.0;
@@ -412,7 +411,10 @@ mtc::Task MTCTaskNode::createTask()
     {
       auto stage = std::make_unique<mtc::stages::MoveTo>("open hand", interpolation_planner);
       stage->setGroup(hand_group_name);
-      stage->setGoal("open");
+      // 목표 joint 값 정의
+      std::map<std::string, double> goal_joints = {
+          {"slider_1", 0.026}};
+      stage->setGoal(goal_joints);
       place->insert(std::move(stage));
     }
 
