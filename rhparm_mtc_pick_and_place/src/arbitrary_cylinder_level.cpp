@@ -213,9 +213,10 @@ void MTCTaskNode::calculation()
   }
   else if (level_ == 3)
   { // 3층
-    if (0.135 <= distance && distance < 0.210) angle_ = 50.0;
-    else if (0.210 <= distance && distance < 0.235) angle_ = 45.0;
-    else if (0.235 <= distance && distance <= 0.240) angle_ = 37.0;
+    if (0.135 <= distance && distance < 0.200) angle_ = 50.0;
+    else if (0.200 <= distance && distance < 0.220) angle_ = 45.0;
+    else if (0.220 <= distance && distance < 0.230) angle_ = 40.0;
+    else if (0.230 <= distance && distance <= 0.260) angle_ = 37.0;
     else {
       rclcpp::shutdown(); // 노드 종료
       return;
@@ -282,7 +283,7 @@ mtc::Task MTCTaskNode::createTask()
       stage->properties().set("marker_ns", "approach_object");
       stage->properties().set("link", hand_frame);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, {"group"});
-      stage->setMinMaxDistance(0.001, 0.2);
+      stage->setMinMaxDistance(0.0, 0.2);
 
       // Set hand forward direction
       geometry_msgs::msg::Vector3Stamped vec;
@@ -495,12 +496,14 @@ mtc::Task MTCTaskNode::createTask()
     task.add(std::move(place));
   }
 
+  /*
   {
     auto stage = std::make_unique<mtc::stages::MoveTo>("return home", sampling_planner);
     stage->properties().configureInitFrom(mtc::Stage::PARENT, {"group"});
     stage->setGoal("rest");
     task.add(std::move(stage));
   }
+  */
   return task;
 }
 
