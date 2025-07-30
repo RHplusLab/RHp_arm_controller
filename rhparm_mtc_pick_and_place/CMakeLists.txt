@@ -19,6 +19,7 @@ find_package(rhp_apriltag_msgs REQUIRED)
 add_executable(vision_cylinder_one src/vision_cylinder_one.cpp)
 add_executable(apriltag_processor_node src/apriltag_processor_node.cpp)
 add_executable(vision_cylinder_stack src/vision_cylinder_stack.cpp)
+add_executable(vision_prepare src/vision_prepare.cpp)
 
 ament_target_dependencies(
   vision_cylinder_one
@@ -40,9 +41,18 @@ ament_target_dependencies(
   std_msgs
 )
 
+ament_target_dependencies(
+  vision_prepare
+  moveit_task_constructor_core
+)
+
 install(TARGETS vision_cylinder_one
 DESTINATION lib/${PROJECT_NAME})
 install(TARGETS vision_cylinder_stack
+DESTINATION lib/${PROJECT_NAME})
+install(TARGETS apriltag_processor_node
+DESTINATION lib/${PROJECT_NAME})
+install(TARGETS vision_prepare
 DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
@@ -59,4 +69,3 @@ endif()
 ament_package()
 
 install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
-install(TARGETS apriltag_processor_node DESTINATION lib/${PROJECT_NAME})
