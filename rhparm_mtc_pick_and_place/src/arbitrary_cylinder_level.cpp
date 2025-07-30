@@ -141,20 +141,45 @@ void MTCTaskNode::doTask()
     return;
   }
 
-  if (!task_.plan(10 /* max_solutions */))
+  // --- Plan 재시도 로직 ---
+  const int MAX_PLAN_ATTEMPTS = 10; // 최대 재시도 횟수
+  bool plan_success = false;
+  int plan_attempts = 0;
+
+  while (plan_attempts < MAX_PLAN_ATTEMPTS && !plan_success && rclcpp::ok())
   {
-    RCLCPP_ERROR_STREAM(LOGGER, "Task planning failed");
+    plan_attempts++;
+    RCLCPP_INFO(LOGGER, "Planning attempt %d/%d...", plan_attempts, MAX_PLAN_ATTEMPTS);
+
+    // plan()의 결과값이 성공 코드와 같은지 비교
+    plan_success = (task_.plan(10 /* max_solutions */) == moveit_msgs::msg::MoveItErrorCodes::SUCCESS);
+
+    if (!plan_success && plan_attempts < MAX_PLAN_ATTEMPTS) {
+      RCLCPP_WARN(LOGGER, "Planning failed. Retrying in 1 second... ⏳");
+      rclcpp::sleep_for(std::chrono::seconds(1));
+    }
+  }
+
+  // 재시도 후에도 plan에 실패하면 함수 종료
+  if (!plan_success)
+  {
+    RCLCPP_ERROR_STREAM(LOGGER, "Task planning failed after " << plan_attempts << " attempts.");
     return;
   }
+
+  // --- Plan 성공 시 Execute ---
+  RCLCPP_INFO(LOGGER, "Planning successful! Executing task... ✅");
   task_.introspection().publishSolution(*task_.solutions().front());
 
   auto result = task_.execute(*task_.solutions().front());
   if (result.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS)
   {
-    RCLCPP_ERROR_STREAM(LOGGER, "Task execution failed");
+    RCLCPP_ERROR_STREAM(LOGGER, "Task execution failed.");
     return;
   }
 
+  RCLCPP_INFO(LOGGER, "Task executed successfully.");
+  rclcpp::shutdown(); // 노드 종료
   return;
 }
 
@@ -193,8 +218,7 @@ void MTCTaskNode::calculation()
     if (0.135 <= distance && distance < 0.195) angle_ = 55.0;
     else if (0.195 <= distance && distance < 0.210) angle_ = 50.0;
     else if (0.210 <= distance && distance < 0.235) angle_ = 45.0;
-    else if (0.235 <= distance && distance < 0.250) angle_ = 35.0;
-    else if (0.250 <= distance && distance <= 0.270) angle_ = 27.0;
+    else if (0.235 <= distance && distance <= 0.240) angle_ = 35.0;
     else {
       rclcpp::shutdown(); // 노드 종료
       return;
@@ -298,7 +322,7 @@ mtc::Task MTCTaskNode::createTask()
         RCLCPP_INFO(LOGGER, "grasp_frame_transform.translation : z_down");
 
         grasp_frame_transform.translation().x() = 0.055;
-        grasp_frame_transform.translation().z() = -0.005;
+        grasp_frame_transform.translation().z() = -0.006;
       }
       else if (level_ == 3 && angle_ < 40) {
         // >>> 메시지 발행 코드 추가 <<<
@@ -308,7 +332,7 @@ mtc::Task MTCTaskNode::createTask()
         RCLCPP_INFO(LOGGER, "grasp_frame_transform.translation : z_down");
 
         grasp_frame_transform.translation().x() = 0.055;
-        grasp_frame_transform.translation().z() = -0.005;
+        grasp_frame_transform.translation().z() = -0.006;
       }
       else {
         // >>> 메시지 발행 코드 추가 <<<
@@ -318,6 +342,7 @@ mtc::Task MTCTaskNode::createTask()
         RCLCPP_INFO(LOGGER, "grasp_frame_transform.translation : z_zero");
 
         grasp_frame_transform.translation().x() = 0.055;
+        grasp_frame_transform.translation().z() = -0.003;
       }
 
       // Compute IK

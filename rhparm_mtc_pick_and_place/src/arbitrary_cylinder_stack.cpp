@@ -118,8 +118,7 @@ void MTCTaskNode::calculation()
   if (0.135 <= distance[2] && distance[2] < 0.195) gripper_angle[2] = 55.0;
   else if (0.195 <= distance[2] && distance[2] < 0.210) gripper_angle[2] = 50.0;
   else if (0.210 <= distance[2] && distance[2] < 0.235) gripper_angle[2] = 45.0;
-  else if (0.235 <= distance[2] && distance[2] < 0.250) gripper_angle[2] = 35.0;
-  else if (0.250 <= distance[2] && distance[2] <= 0.270) gripper_angle[2] = 27.0;
+  else if (0.235 <= distance[2] && distance[2] <= 0.240) gripper_angle[2] = 35.0;
   else {
     RCLCPP_ERROR(LOGGER, "Invalid distance for Distance3: %f", distance[2]);
     rclcpp::shutdown(); // 노드 종료
@@ -179,9 +178,11 @@ void MTCTaskNode::setupPlanningScene()
 
 void MTCTaskNode::doTask()
 {
+  const int MAX_PLAN_ATTEMPTS = 5; // 최대 재시도 횟수
+
   for (int level = 1; level <= 3; ++level)
   {
-    RCLCPP_INFO(LOGGER, "=== Start planning for object%d ===", level);
+    RCLCPP_INFO(LOGGER, "=== Start task for object%d ===", level);
 
     task_ = createTask(level);
 
@@ -192,15 +193,35 @@ void MTCTaskNode::doTask()
     catch (const mtc::InitStageException &e)
     {
       RCLCPP_ERROR_STREAM(LOGGER, "Task initialization failed for object" << level << ": " << e);
-      continue;
+      continue; // 초기화 실패 시 다음 물체로 넘어감
     }
 
-    if (!task_.plan(10 /* max_solutions */))
+    // --- Plan 재시도 로직 ---
+    bool plan_success = false;
+    int plan_attempts = 0;
+    while (plan_attempts < MAX_PLAN_ATTEMPTS && !plan_success && rclcpp::ok())
     {
-      RCLCPP_ERROR_STREAM(LOGGER, "Task planning failed for object" << level);
+      plan_attempts++;
+      RCLCPP_INFO(LOGGER, "Planning attempt %d/%d for object%d...", plan_attempts, MAX_PLAN_ATTEMPTS, level);
+
+      // plan()의 결과가 성공 코드(SUCCESS)인지 확인하여 결과를 bool 타입으로 저장
+      plan_success = (task_.plan(10 /* max_solutions */) == moveit_msgs::msg::MoveItErrorCodes::SUCCESS);
+
+      if (!plan_success && plan_attempts < MAX_PLAN_ATTEMPTS) {
+        RCLCPP_WARN(LOGGER, "Planning failed. Retrying in 1 second... ⏳");
+        rclcpp::sleep_for(std::chrono::seconds(1)); // 재시도 전 1초 대기
+      }
+    }
+
+    // 재시도 후에도 plan에 실패하면 다음 물체로 넘어감
+    if (!plan_success)
+    {
+      RCLCPP_ERROR_STREAM(LOGGER, "Task planning failed for object" << level << " after " << plan_attempts << " attempts. Skipping.");
       continue;
     }
 
+    // --- Plan 성공 시 Execute ---
+    RCLCPP_INFO(LOGGER, "Planning successful! Executing task for object%d... ✅", level);
     task_.introspection().publishSolution(*task_.solutions().front());
 
     auto result = task_.execute(*task_.solutions().front());
@@ -212,6 +233,9 @@ void MTCTaskNode::doTask()
 
     RCLCPP_INFO(LOGGER, "=== Successfully executed object%d ===", level);
   }
+  RCLCPP_INFO(LOGGER, "Task executed successfully.");
+  rclcpp::shutdown(); // 노드 종료
+  return;
 }
 
 mtc::Task MTCTaskNode::createTask(int level)
@@ -300,13 +324,14 @@ mtc::Task MTCTaskNode::createTask(int level)
         grasp_strategy_publisher_->publish(msg);
         RCLCPP_INFO(LOGGER, "grasp_frame_transform.translation : z_down");
         grasp_frame_transform.translation().x() = 0.055;
-        grasp_frame_transform.translation().z() = -0.005;
+        grasp_frame_transform.translation().z() = -0.006;
       } else {
         auto msg = std_msgs::msg::String();
         msg.data = "z_zero";
         grasp_strategy_publisher_->publish(msg);
         RCLCPP_INFO(LOGGER, "grasp_frame_transform.translation : z_zero");
         grasp_frame_transform.translation().x() = 0.055;
+        grasp_frame_transform.translation().z() = -0.003;
       }
 
       auto wrapper = std::make_unique<mtc::stages::ComputeIK>("grasp pose IK", std::move(stage));
@@ -375,7 +400,7 @@ mtc::Task MTCTaskNode::createTask(int level)
     {
       auto stage = std::make_unique<mtc::stages::MoveRelative>("descend object", cartesian_planner);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, {"group"});
-      stage->setMinMaxDistance(0.003, 0.2);
+      stage->setMinMaxDistance(0.008, 0.2);
       stage->setIKFrame(hand_frame);
       stage->properties().set("marker_ns", "descend_object");
       geometry_msgs::msg::Vector3Stamped vec;

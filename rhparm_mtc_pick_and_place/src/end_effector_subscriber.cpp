@@ -77,7 +77,10 @@ void EndEffectorSubscriber::on_timer()
         // ✅ 추가/수정된 부분 시작
         double z_offset = 0.0;
         if (last_strategy_ == "z_down") {
-            z_offset = 0.005;
+            z_offset = 0.006;
+        }
+        else if (last_strategy_ == "z_zero") {
+            z_offset = 0.003;
         }
 
         std::array<double, 3> v;
