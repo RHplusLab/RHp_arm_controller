@@ -89,8 +89,7 @@ void MTCTaskNode::calculation()
   RCLCPP_INFO(LOGGER, "Distance3: %f", distance[2]);
 
   // 1층
-  if (0.10 <= distance[0] && distance[0] < 0.13) gripper_angle[0] = 75.0;
-  else if (0.13 <= distance[0] && distance[0] < 0.145) gripper_angle[0] = 70.0;
+  if (0.10 <= distance[0] && distance[0] < 0.145) gripper_angle[0] = 70.0;
   else if (0.145 <= distance[0] && distance[0] < 0.16) gripper_angle[0] = 65.0;
   else if (0.16 <= distance[0] && distance[0] < 0.18) gripper_angle[0] = 60.0;
   else if (0.18 <= distance[0] && distance[0] <= 0.21) gripper_angle[0] = 55.0;
@@ -101,8 +100,7 @@ void MTCTaskNode::calculation()
   }
 
   // 2층
-  if (0.12 <= distance[1] && distance[1] < 0.15) gripper_angle[1] = 68.0;
-  else if (0.15 <= distance[1] && distance[1] < 0.175) gripper_angle[1] = 60.0;
+  if (0.12 <= distance[1] && distance[1] < 0.175) gripper_angle[1] = 60.0;
   else if (0.175 <= distance[1] && distance[1] < 0.195) gripper_angle[1] = 55.0;
   else if (0.195 <= distance[1] && distance[1] < 0.210) gripper_angle[1] = 50.0;
   else if (0.210 <= distance[1] && distance[1] < 0.225) gripper_angle[1] = 45.0;
@@ -115,10 +113,9 @@ void MTCTaskNode::calculation()
   }
 
   // 3층
-  if (0.135 <= distance[2] && distance[2] < 0.195) gripper_angle[2] = 55.0;
-  else if (0.195 <= distance[2] && distance[2] < 0.210) gripper_angle[2] = 50.0;
+  if (0.135 <= distance[2] && distance[2] < 0.210) gripper_angle[2] = 50.0;
   else if (0.210 <= distance[2] && distance[2] < 0.235) gripper_angle[2] = 45.0;
-  else if (0.235 <= distance[2] && distance[2] <= 0.240) gripper_angle[2] = 35.0;
+  else if (0.235 <= distance[2] && distance[2] <= 0.240) gripper_angle[2] = 37.0;
   else {
     RCLCPP_ERROR(LOGGER, "Invalid distance for Distance3: %f", distance[2]);
     rclcpp::shutdown(); // 노드 종료
@@ -400,7 +397,7 @@ mtc::Task MTCTaskNode::createTask(int level)
     {
       auto stage = std::make_unique<mtc::stages::MoveRelative>("descend object", cartesian_planner);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, {"group"});
-      stage->setMinMaxDistance(0.008, 0.2);
+      stage->setMinMaxDistance(0.010, 0.2);
       stage->setIKFrame(hand_frame);
       stage->properties().set("marker_ns", "descend_object");
       geometry_msgs::msg::Vector3Stamped vec;
@@ -438,7 +435,10 @@ mtc::Task MTCTaskNode::createTask(int level)
     {
       auto stage = std::make_unique<mtc::stages::MoveTo>("open hand", interpolation_planner);
       stage->setGroup(hand_group_name);
-      stage->setGoal("open");
+      // 목표 joint 값 정의
+      std::map<std::string, double> goal_joints = {
+          {"slider_1", 0.026}};
+      stage->setGoal(goal_joints);
       place->insert(std::move(stage));
     }
 

@@ -189,8 +189,7 @@ void MTCTaskNode::calculation()
 
   if (level_ == 1)
   { // 1층
-    if (0.10 <= distance && distance < 0.13) angle_ = 75.0;
-    else if (0.13 <= distance && distance < 0.145) angle_ = 70.0;
+    if (0.10 <= distance && distance < 0.145) angle_ = 70.0;
     else if (0.145 <= distance && distance < 0.16) angle_ = 65.0;
     else if (0.16 <= distance && distance < 0.18) angle_ = 60.0;
     else if (0.18 <= distance && distance <= 0.21) angle_ = 55.0;
@@ -201,8 +200,7 @@ void MTCTaskNode::calculation()
   }
   else if (level_ == 2)
   { // 2층
-    if (0.12 <= distance && distance < 0.15) angle_ = 68.0;
-    else if (0.15 <= distance && distance < 0.175) angle_ = 60.0;
+    if (0.12 <= distance && distance < 0.175) angle_ = 60.0;
     else if (0.175 <= distance && distance < 0.195) angle_ = 55.0;
     else if (0.195 <= distance && distance < 0.210) angle_ = 50.0;
     else if (0.210 <= distance && distance < 0.225) angle_ = 45.0;
@@ -215,10 +213,9 @@ void MTCTaskNode::calculation()
   }
   else if (level_ == 3)
   { // 3층
-    if (0.135 <= distance && distance < 0.195) angle_ = 55.0;
-    else if (0.195 <= distance && distance < 0.210) angle_ = 50.0;
+    if (0.135 <= distance && distance < 0.210) angle_ = 50.0;
     else if (0.210 <= distance && distance < 0.235) angle_ = 45.0;
-    else if (0.235 <= distance && distance <= 0.240) angle_ = 35.0;
+    else if (0.235 <= distance && distance <= 0.240) angle_ = 37.0;
     else {
       rclcpp::shutdown(); // 노드 종료
       return;
@@ -425,7 +422,7 @@ mtc::Task MTCTaskNode::createTask()
       auto stage =
           std::make_unique<mtc::stages::MoveRelative>("descend object", cartesian_planner);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, {"group"});
-      stage->setMinMaxDistance(0.003, 0.2);
+      stage->setMinMaxDistance(0.010, 0.2);
       stage->setIKFrame(hand_frame);
       stage->properties().set("marker_ns", "descend_object");
 
@@ -470,7 +467,10 @@ mtc::Task MTCTaskNode::createTask()
     {
       auto stage = std::make_unique<mtc::stages::MoveTo>("open hand", interpolation_planner);
       stage->setGroup(hand_group_name);
-      stage->setGoal("open");
+      // 목표 joint 값 정의
+      std::map<std::string, double> goal_joints = {
+          {"slider_1", 0.026}};
+      stage->setGoal(goal_joints);
       place->insert(std::move(stage));
     }
 
