@@ -142,9 +142,10 @@ void MTCTaskNode::calculation()
   }
 
   // 3층
-  if (0.135 <= distance[2] && distance[2] < 0.210) gripper_angle[2] = 50.0;
-  else if (0.210 <= distance[2] && distance[2] < 0.235) gripper_angle[2] = 45.0;
-  else if (0.235 <= distance[2] && distance[2] <= 0.240) gripper_angle[2] = 37.0;
+  if (0.135 <= distance[2] && distance[2] < 0.200) gripper_angle[2] = 50.0;
+  else if (0.200 <= distance[2] && distance[2] < 0.220) gripper_angle[2] = 45.0;
+  else if (0.220 <= distance[2] && distance[2] < 0.230) gripper_angle[2] = 40.0;
+  else if (0.230 <= distance[2] && distance[2] <= 0.260) gripper_angle[2] = 37.0;
   else {
     RCLCPP_ERROR(LOGGER, "Invalid distance for Distance3: %f", distance[2]);
     rclcpp::shutdown(); // 노드 종료
@@ -324,7 +325,7 @@ mtc::Task MTCTaskNode::createTask(int level)
       stage->properties().set("marker_ns", "approach_object");
       stage->properties().set("link", hand_frame);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, {"group"});
-      stage->setMinMaxDistance(0.001, 0.2);
+      stage->setMinMaxDistance(0.0, 0.2);
       // Set hand forward direction
       geometry_msgs::msg::Vector3Stamped vec;
       vec.header.frame_id = hand_frame;

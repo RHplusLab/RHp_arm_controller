@@ -24,20 +24,30 @@ private:
 
     // 2) 레벨별 거리 범위 정의
     const double min_th[3] = {0.10, 0.120, 0.135};
-    const double max_th[3] = {0.21, 0.265, 0.240};
+    const double max_th[3] = {0.21, 0.265, 0.260};
 
     // 3) 최대 3개 태그를 한 줄로 출력
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(3);
     for (size_t i = 0; i < dets.size() && i < 3; ++i) {
       const auto &det = dets[i];
+
+      // [수정] ID가 유효한 범위(1~3)에 있는지 확인
+      if (det.id < 1 || det.id > 3) {
+        RCLCPP_WARN(get_logger(), "Skipping invalid tag ID: %d", det.id);
+        continue; // 유효하지 않은 ID는 건너뛰기
+      }
+
+      // [수정] det.id를 기반으로 올바른 배열 인덱스 계산
+      int th_idx = det.id - 1;
+
       double x    = det.pose.pose.pose.position.x;
       double y    = det.pose.pose.pose.position.y;
       double z    = det.pose.pose.pose.position.z;
       double dist = std::sqrt(x*x + y*y);
 
-      // OK/Out 판정용 이모지
-      const char *mark = (dist >= min_th[i] && dist <= max_th[i]) ? "O" : "X";
+      // [수정] 올바른 인덱스(th_idx)를 사용하여 OK/Out 판정
+      const char *mark = (dist >= min_th[th_idx] && dist <= max_th[th_idx]) ? "O" : "X";
 
       // 정보 추가
       oss << "ID:" << det.id
