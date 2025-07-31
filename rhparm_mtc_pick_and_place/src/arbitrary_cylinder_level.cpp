@@ -496,14 +496,14 @@ mtc::Task MTCTaskNode::createTask()
     task.add(std::move(place));
   }
 
-  /*
+
   {
     auto stage = std::make_unique<mtc::stages::MoveTo>("return home", sampling_planner);
     stage->properties().configureInitFrom(mtc::Stage::PARENT, {"group"});
     stage->setGoal("rest");
     task.add(std::move(stage));
   }
-  */
+
   return task;
 }
 
