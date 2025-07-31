@@ -136,7 +136,7 @@ void MTCTaskNode::setupPlanningScene()
   geometry_msgs::msg::Pose pose;
   pose.position.x = x_coord_; // Use captured x-coordinate
   pose.position.y = y_coord_; // Use captured y-coordinate
-  pose.position.z = 0.02 + 0.001;
+  pose.position.z = place_zcoord;
   pose.orientation.w = 1.0;
   object.pose = pose;
 
@@ -196,6 +196,7 @@ void MTCTaskNode::doTask()
   }
 
   RCLCPP_INFO(LOGGER, "Task executed successfully.");
+  rclcpp::shutdown(); // 노드 종료
   return;
 }
 
